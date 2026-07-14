@@ -1,0 +1,35 @@
+# ── Core ────────────────────────────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-dotenv==1.0.1
+python-multipart==0.0.12      # for UploadFile support
+
+# ── Auth ────────────────────────────────────────────────────────────────────
+python-jose[cryptography]==3.3.0   # JWT signing / verification
+passlib[bcrypt]==1.7.4
+
+
+# ── Database (async) ────────────────────────────────────────────────────────
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0                    # PostgreSQL async driver
+alembic==1.14.0                    # DB migrations
+
+# ── Caching / OTP storage ───────────────────────────────────────────────────
+redis==5.2.0                       # Redis client (for OTP TTL + token denylist)
+
+# ── AI ─────────────────────────────────────────────────────────────────────
+google-generativeai==0.8.3         # Gemini API (recommendations, OCR, chat)
+
+# ── Storage ─────────────────────────────────────────────────────────────────
+boto3==1.35.0                      # AWS S3 (invoice photo uploads)
+
+# ── SMS / Notifications ─────────────────────────────────────────────────────
+twilio==9.3.5                      # OTP SMS dispatch (optional, can use MSG91)
+httpx==0.27.2                      # WhatsApp Cloud API calls
+
+# ── Dev / Testing ───────────────────────────────────────────────────────────
+pytest==8.3.4
+pytest-asyncio==0.24.0
+httpx                              # already listed, also used by TestClient
