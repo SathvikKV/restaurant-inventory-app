@@ -1,14 +1,30 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { INVENTORY } from "../../components/inventory-data";
+import { loadAuth } from "../../lib/auth-store";
+import { adjustStock } from "../../lib/api";
 
 export default function AdjustStockScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const item = INVENTORY.find(i => i.id === id);
-  const [qty, setQty] = useState(item ? String(item.quantity) : "");
+  const { id, itemName, unit, currentQty } = useLocalSearchParams<{ id: string; itemName: string; unit: string; currentQty: string }>();
+  const [qty, setQty] = useState(currentQty || "");
   const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSave() {
+    if (!qty || !reason) return;
+    setLoading(true);
+    try {
+      const auth = await loadAuth();
+      if (!auth.token) throw new Error("Not authenticated");
+      await adjustStock(auth.token, id, parseFloat(qty), reason);
+      Alert.alert("Success", "Stock adjusted", [{ text: "OK", onPress: () => router.back() }]);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to adjust stock");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">
@@ -23,13 +39,13 @@ export default function AdjustStockScreen() {
             </TouchableOpacity>
             <Text className="text-[26px] font-bold text-kosh-textMain mb-1">Adjust Stock</Text>
             <Text className="text-kosh-textMuted text-[15px] mb-8">
-              {item?.name} · Current: {item?.quantity} {item?.unit}
+              {itemName} · Current: {currentQty} {unit}
             </Text>
 
             <View className="gap-5">
               <View>
                 <Text className="text-[13px] font-bold text-kosh-textMuted mb-2 uppercase tracking-wide">
-                  New Quantity ({item?.unit})
+                  New Quantity ({unit})
                 </Text>
                 <TextInput
                   value={qty}
@@ -54,11 +70,15 @@ export default function AdjustStockScreen() {
           </View>
 
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={handleSave}
+            disabled={!qty || !reason || loading}
             className="w-full bg-kosh-primary py-[18px] rounded-full items-center"
             activeOpacity={0.85}
           >
-            <Text className="text-white font-bold text-[17px]">Save Adjustment</Text>
+            {loading
+              ? <ActivityIndicator color="white" />
+              : <Text className="text-white font-bold text-[17px]">Save Adjustment</Text>
+            }
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

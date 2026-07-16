@@ -1,10 +1,30 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { requestOTP } from "../../lib/api";
 
 export default function PhoneScreen() {
   const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSendOTP() {
+    if (phone.length < 10) return;
+    setLoading(true);
+    try {
+      const fullPhone = `+91${phone}`;
+      const result = await requestOTP(fullPhone);
+      // In mock mode, auto-fill OTP for convenience
+      router.push({
+        pathname: "/onboarding/otp",
+        params: { phone: fullPhone, mockOtp: result.mock_otp || "" },
+      });
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to send OTP");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">
@@ -48,12 +68,15 @@ export default function PhoneScreen() {
             </Text>
           </View>
           <TouchableOpacity
-            onPress={() => router.push("/onboarding/otp")}
-            disabled={phone.length < 10}
-            className="w-full bg-kosh-primary py-[18px] rounded-full items-center disabled:opacity-30"
+            onPress={handleSendOTP}
+            disabled={phone.length < 10 || loading}
+            className="w-full bg-kosh-primary py-[18px] rounded-full items-center"
             activeOpacity={0.85}
           >
-            <Text className="text-white font-bold text-[17px]">Send OTP</Text>
+            {loading
+              ? <ActivityIndicator color="white" />
+              : <Text className="text-white font-bold text-[17px]">Send OTP</Text>
+            }
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

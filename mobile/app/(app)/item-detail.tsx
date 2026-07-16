@@ -1,11 +1,39 @@
 import { View, Text, ScrollView, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { INVENTORY, getStatus, getStatusColor } from "../../components/inventory-data";
+
+type APIItem = {
+  id: string;
+  item: string;
+  unit: string;
+  current_qty: number;
+  reorder_threshold: number;
+  category: string | null;
+  status: string;
+};
+
+function getStatusColor(status: string): string {
+  const s = status.toLowerCase();
+  if (s === "out_of_stock" || s === "out of stock" || s === "critical") return s === "critical" ? "#F97316" : "#EF4444";
+  if (s === "low") return "#EAB308";
+  return "#22C55E";
+}
+
+function getStatusLabel(status: string): string {
+  const s = status.toLowerCase();
+  if (s === "out_of_stock") return "Out of Stock";
+  if (s === "critical") return "Critical";
+  if (s === "low") return "Low";
+  return "Healthy";
+}
 
 export default function ItemDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const item = INVENTORY.find(i => i.id === id);
+  const { itemJson } = useLocalSearchParams<{ itemJson: string }>();
+
+  let item: APIItem | null = null;
+  try {
+    item = JSON.parse(itemJson);
+  } catch {}
 
   if (!item) {
     return (
@@ -15,14 +43,34 @@ export default function ItemDetailScreen() {
     );
   }
 
-  const status = getStatus(item);
-  const statusColor = getStatusColor(status);
+  const statusColor = getStatusColor(item.status);
+  const statusLabel = getStatusLabel(item.status);
 
   const actions = [
-    { icon: "📥", label: "Receive Stock", route: "/(app)/receive-stock" },
-    { icon: "📤", label: "Issue Stock", route: "/(app)/issue-stock" },
-    { icon: "✏️", label: "Adjust Stock", route: "/(app)/adjust-stock" },
-    { icon: "🗑️", label: "Log Wastage", route: "/(app)/log-wastage" },
+    {
+      icon: "📥",
+      label: "Receive Stock",
+      route: "/(app)/receive-stock",
+      params: { id: item.id, itemName: item.item, unit: item.unit, currentQty: String(item.current_qty) },
+    },
+    {
+      icon: "📤",
+      label: "Issue Stock",
+      route: "/(app)/issue-stock",
+      params: { id: item.id, itemName: item.item, unit: item.unit, currentQty: String(item.current_qty) },
+    },
+    {
+      icon: "✏️",
+      label: "Adjust Stock",
+      route: "/(app)/adjust-stock",
+      params: { id: item.id, itemName: item.item, unit: item.unit, currentQty: String(item.current_qty) },
+    },
+    {
+      icon: "🗑️",
+      label: "Log Wastage",
+      route: "/(app)/log-wastage",
+      params: { id: item.id, itemName: item.item, unit: item.unit },
+    },
   ];
 
   return (
@@ -42,40 +90,33 @@ export default function ItemDetailScreen() {
           <View className="bg-white rounded-3xl p-5 border border-kosh-border mb-4">
             <View className="flex-row items-center gap-4 mb-4">
               <View className="w-16 h-16 bg-kosh-bg rounded-2xl items-center justify-center">
-                <Text className="text-4xl">{item.img}</Text>
+                <Text className="text-4xl">📦</Text>
               </View>
               <View className="flex-1">
-                <Text className="text-[22px] font-bold text-kosh-textMain">{item.name}</Text>
-                <Text className="text-[14px] text-kosh-textMuted">{item.category} · {item.sku}</Text>
+                <Text className="text-[22px] font-bold text-kosh-textMain">{item.item}</Text>
+                <Text className="text-[14px] text-kosh-textMuted">{item.category || "General"}</Text>
               </View>
             </View>
 
             <View className="flex-row gap-3">
               <View className="flex-1 bg-kosh-bg rounded-2xl p-3">
                 <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Current Stock</Text>
-                <Text className="text-kosh-textMain text-[22px] font-bold">{item.quantity}</Text>
+                <Text className="text-kosh-textMain text-[22px] font-bold">{item.current_qty}</Text>
                 <Text className="text-kosh-textMuted text-[12px]">{item.unit}</Text>
               </View>
               <View className="flex-1 bg-kosh-bg rounded-2xl p-3">
                 <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Reorder At</Text>
-                <Text className="text-kosh-textMain text-[22px] font-bold">{item.buffer}</Text>
+                <Text className="text-kosh-textMain text-[22px] font-bold">{item.reorder_threshold}</Text>
                 <Text className="text-kosh-textMuted text-[12px]">{item.unit}</Text>
               </View>
               <View className="flex-1 bg-kosh-bg rounded-2xl p-3">
                 <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Status</Text>
                 <View className="flex-row items-center gap-1" style={{ marginTop: 4 }}>
                   <View className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColor }} />
-                  <Text className="text-[12px] font-bold" style={{ color: statusColor }}>{status}</Text>
+                  <Text className="text-[12px] font-bold" style={{ color: statusColor }}>{statusLabel}</Text>
                 </View>
               </View>
             </View>
-          </View>
-
-          {/* Supplier */}
-          <View className="bg-white rounded-2xl p-4 border border-kosh-border mb-4">
-            <Text className="text-[13px] font-bold text-kosh-textMuted mb-1 uppercase tracking-wide">Supplier</Text>
-            <Text className="text-[16px] font-semibold text-kosh-textMain">{item.supplier}</Text>
-            <Text className="text-[13px] text-kosh-textMuted" style={{ marginTop: 2 }}>₹{item.cost} per {item.unit}</Text>
           </View>
 
           {/* Actions */}
@@ -84,7 +125,7 @@ export default function ItemDetailScreen() {
             {actions.map((action, idx) => (
               <TouchableOpacity
                 key={action.label}
-                onPress={() => router.push({ pathname: action.route as any, params: { id: item.id } })}
+                onPress={() => router.push({ pathname: action.route as any, params: action.params })}
                 className={`px-4 py-4 flex-row items-center gap-3 ${idx < actions.length - 1 ? "border-b border-kosh-border" : ""}`}
               >
                 <Text className="text-xl">{action.icon}</Text>

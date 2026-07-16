@@ -1,46 +1,27 @@
-import { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { useState, useEffect } from "react";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { loadAuth } from "../../lib/auth-store";
+import { getInventoryHealth, getAIRecommendations, getInventory } from "../../lib/api";
 
-const INVENTORY = [
-  { id: "paneer", name: "Paneer", category: "Dairy", unit: "kg", quantity: 18, buffer: 12, img: "🧀", cost: 420 },
-  { id: "chk-brst", name: "Chicken Breast", category: "Meat", unit: "kg", quantity: 4, buffer: 15, img: "🍗", cost: 280 },
-  { id: "basmati", name: "Basmati Rice", category: "Dry Goods", unit: "kg", quantity: 42, buffer: 20, img: "🍚", cost: 90 },
-  { id: "sun-oil", name: "Sunflower Oil", category: "Dry Goods", unit: "L", quantity: 12, buffer: 10, img: "🫙", cost: 140 },
-  { id: "tomato", name: "Tomatoes", category: "Produce", unit: "kg", quantity: 3, buffer: 10, img: "🍅", cost: 50 },
-  { id: "onion", name: "Onions", category: "Produce", unit: "kg", quantity: 22, buffer: 15, img: "🧅", cost: 40 },
-  { id: "garlic", name: "Garlic", category: "Produce", unit: "kg", quantity: 2.5, buffer: 3, img: "🧄", cost: 120 },
-  { id: "milk", name: "Full Cream Milk", category: "Dairy", unit: "L", quantity: 10, buffer: 8, img: "🥛", cost: 65 },
-  { id: "butter", name: "Butter", category: "Dairy", unit: "kg", quantity: 5.5, buffer: 4, img: "🧈", cost: 550 },
-  { id: "salt", name: "Salt", category: "Spices", unit: "kg", quantity: 12, buffer: 5, img: "🧂", cost: 25 },
-  { id: "chilli", name: "Red Chilli Powder", category: "Spices", unit: "kg", quantity: 1.5, buffer: 2, img: "🌶️", cost: 350 },
-  { id: "turmeric", name: "Turmeric Powder", category: "Spices", unit: "kg", quantity: 1.2, buffer: 2, img: "🌿", cost: 280 },
-  { id: "coriander", name: "Coriander Leaves", category: "Produce", unit: "kg", quantity: 0.2, buffer: 1, img: "🌿", cost: 80 },
-  { id: "lemon", name: "Lemons", category: "Produce", unit: "pcs", quantity: 15, buffer: 50, img: "🍋", cost: 5 },
-  { id: "coke", name: "Coca-Cola 330ml", category: "Beverages", unit: "pcs", quantity: 12, buffer: 48, img: "🥤", cost: 35 },
-  { id: "water", name: "Mineral Water 1L", category: "Beverages", unit: "pcs", quantity: 24, buffer: 24, img: "💧", cost: 20 },
-  { id: "mutton", name: "Mutton (Curry Cut)", category: "Meat", unit: "kg", quantity: 0, buffer: 5, img: "🥩", cost: 850 },
-  { id: "cashew", name: "Cashews", category: "Dry Goods", unit: "kg", quantity: 5, buffer: 4, img: "🥜", cost: 800 },
-  { id: "sugar", name: "White Sugar", category: "Dry Goods", unit: "kg", quantity: 20, buffer: 10, img: "🍬", cost: 45 },
-];
+type HealthData = { score: number; label: string; critical: number; low: number; healthy: number; total: number };
+type Recommendation = { id: string; title: string; reason: string; item: string; current_qty: number; unit: string };
+type InventoryItem = { id: string; item: string; unit: string; current_qty: number; reorder_threshold: number; category: string | null; status: string };
 
-function getStatus(item: typeof INVENTORY[0]) {
-  if (item.quantity === 0) return "Out of Stock";
-  if (item.quantity <= item.buffer * 0.3) return "Critical";
-  if (item.quantity <= item.buffer * 0.6) return "Low";
-  return "Healthy";
+function getStatusColor(status: string): string {
+  const s = status.toLowerCase();
+  if (s === "out_of_stock" || s === "out of stock") return "#EF4444";
+  if (s === "critical") return "#F97316";
+  if (s === "low") return "#EAB308";
+  return "#22C55E";
 }
 
-function getHealthScore(items: typeof INVENTORY) {
-  const healthy = items.filter(i => getStatus(i) === "Healthy").length;
-  return Math.round((healthy / items.length) * 100);
+function isUrgent(status: string) {
+  const s = status.toLowerCase();
+  return s === "critical" || s === "out_of_stock" || s === "out of stock";
 }
 
-function OwnerHome() {
-  const score = getHealthScore(INVENTORY);
-  const critical = INVENTORY.filter(i => ["Critical", "Out of Stock"].includes(getStatus(i)));
-  const actionItems = critical.slice(0, 3);
-
+function OwnerHome({ health, recs, urgentItems }: { health: HealthData; recs: Recommendation[]; urgentItems: InventoryItem[] }) {
   return (
     <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
       <View className="px-5 pt-4 pb-6">
@@ -49,7 +30,7 @@ function OwnerHome() {
         <View className="flex-row justify-between items-center mb-6">
           <View>
             <Text className="text-[13px] text-kosh-textMuted font-medium">Good Morning,</Text>
-            <Text className="text-[24px] font-bold text-kosh-textMain">Aditya 👋</Text>
+            <Text className="text-[24px] font-bold text-kosh-textMain">Welcome 👋</Text>
           </View>
           <TouchableOpacity className="w-10 h-10 bg-white rounded-full items-center justify-center border border-kosh-border">
             <Text className="text-lg">🔔</Text>
@@ -61,21 +42,21 @@ function OwnerHome() {
           <View className="flex-row justify-between items-center">
             <View className="flex-1">
               <Text className="text-white text-[13px] font-medium mb-1" style={{ opacity: 0.7 }}>Inventory Health</Text>
-              <Text className="text-white text-[40px] font-bold" style={{ lineHeight: 44 }}>{score}</Text>
+              <Text className="text-white text-[40px] font-bold" style={{ lineHeight: 44 }}>{health.score}</Text>
               <Text className="text-white text-[13px] mt-1" style={{ opacity: 0.7 }}>out of 100</Text>
             </View>
             <View className="w-20 h-20 rounded-full items-center justify-center" style={{ borderWidth: 4, borderColor: "rgba(255,255,255,0.2)" }}>
-              <Text className="text-white text-[28px] font-bold">{score}</Text>
+              <Text className="text-white text-[28px] font-bold">{health.score}</Text>
             </View>
           </View>
           <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.2)" }}>
             <Text className="text-white text-[12px] font-medium" style={{ opacity: 0.7 }}>
-              {critical.length} item{critical.length !== 1 ? "s" : ""} need attention
+              {health.critical} item{health.critical !== 1 ? "s" : ""} need attention
             </Text>
           </View>
         </View>
 
-        {/* Stats Row */}
+        {/* Stats Row — TODO: wire to /reports/daily-summary */}
         <View className="flex-row gap-3 mb-4">
           <View className="flex-1 bg-white rounded-2xl p-4 border border-kosh-border">
             <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Today's Purchases</Text>
@@ -86,34 +67,33 @@ function OwnerHome() {
             <Text className="text-kosh-textMain text-[20px] font-bold">₹31,400</Text>
           </View>
         </View>
-
         <View className="bg-white rounded-2xl p-4 border border-kosh-border mb-4">
           <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Today's Wastage</Text>
           <Text className="text-kosh-textMain text-[20px] font-bold">₹2,100</Text>
         </View>
 
-        {/* Action Items */}
-        {actionItems.length > 0 && (
+        {/* Needs Attention */}
+        {urgentItems.length > 0 && (
           <View className="bg-white rounded-2xl border border-kosh-border mb-4 overflow-hidden">
             <View className="px-4 pt-4 pb-2">
               <Text className="text-[15px] font-bold text-kosh-textMain">Needs Attention</Text>
             </View>
-            {actionItems.map((item, idx) => (
-              <TouchableOpacity
+            {urgentItems.slice(0, 3).map((item, idx) => (
+              <View
                 key={item.id}
-                className={`px-4 py-3 flex-row items-center gap-3 ${idx < actionItems.length - 1 ? "border-b border-kosh-border" : ""}`}
+                className={`px-4 py-3 flex-row items-center gap-3 ${idx < Math.min(urgentItems.length, 3) - 1 ? "border-b border-kosh-border" : ""}`}
               >
                 <View className="w-10 h-10 bg-red-50 rounded-xl items-center justify-center">
-                  <Text className="text-xl">{item.img}</Text>
+                  <Text className="text-xl">⚠️</Text>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-[14px] font-semibold text-kosh-textMain">{item.name}</Text>
+                  <Text className="text-[14px] font-semibold text-kosh-textMain">{item.item}</Text>
                   <Text className="text-[12px] text-kosh-textMuted">
-                    {getStatus(item) === "Out of Stock" ? "Currently out of stock" : `Only ${item.quantity}${item.unit} remaining`}
+                    {item.current_qty === 0 ? "Currently out of stock" : `Only ${item.current_qty} ${item.unit} remaining`}
                   </Text>
                 </View>
                 <Text className="text-kosh-textMuted">›</Text>
-              </TouchableOpacity>
+              </View>
             ))}
           </View>
         )}
@@ -122,9 +102,14 @@ function OwnerHome() {
         <View className="bg-kosh-primary rounded-2xl p-5">
           <Text className="text-white font-bold text-[15px] mb-3">AI Recommendations</Text>
           <View className="gap-2">
-            <Text className="text-white text-[13px]" style={{ opacity: 0.8 }}>• Order 20kg paneer today</Text>
-            <Text className="text-white text-[13px]" style={{ opacity: 0.8 }}>• Switch chicken supplier</Text>
-            <Text className="text-white text-[13px]" style={{ opacity: 0.8 }}>• Butter usage 18% above normal</Text>
+            {recs.length > 0
+              ? recs.slice(0, 3).map(r => (
+                  <Text key={r.id} className="text-white text-[13px]" style={{ opacity: 0.8 }}>• {r.title}</Text>
+                ))
+              : (
+                  <Text className="text-white text-[13px]" style={{ opacity: 0.8 }}>No recommendations at this time.</Text>
+                )
+            }
           </View>
           <TouchableOpacity className="mt-4 rounded-full py-2.5 items-center" style={{ borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" }}>
             <Text className="text-white font-semibold text-[13px]">View All Recommendations</Text>
@@ -136,12 +121,12 @@ function OwnerHome() {
   );
 }
 
-function ManagerHome() {
+function ManagerHome({ health }: { health: HealthData }) {
   const tasks = [
-    { icon: "📦", title: "Receive Deliveries", count: 2, color: "bg-blue-50" },
-    { icon: "🛒", title: "Pending POs", count: 3, color: "bg-amber-50" },
-    { icon: "⚠️", title: "Low Stock Items", count: 5, color: "bg-red-50" },
-    { icon: "✏️", title: "Pending Corrections", count: 2, color: "bg-purple-50" },
+    { icon: "📦", title: "Receive Deliveries", count: 2, color: "#EFF6FF" }, // TODO: wire to pending POs
+    { icon: "🛒", title: "Pending POs", count: 3, color: "#FFFBEB" },        // TODO: wire to purchase-orders?status=pending
+    { icon: "⚠️", title: "Low Stock Items", count: health.low + health.critical, color: "#FEF2F2" },
+    { icon: "✏️", title: "Pending Corrections", count: 2, color: "#F5F3FF" }, // TODO: wire to corrections endpoint
   ];
 
   return (
@@ -152,14 +137,13 @@ function ManagerHome() {
         <View className="flex-row justify-between items-center mb-6">
           <View>
             <Text className="text-[13px] text-kosh-textMuted font-medium">Good Morning,</Text>
-            <Text className="text-[24px] font-bold text-kosh-textMain">Ramesh 👋</Text>
+            <Text className="text-[24px] font-bold text-kosh-textMain">Manager 👋</Text>
           </View>
           <TouchableOpacity className="w-10 h-10 bg-white rounded-full items-center justify-center border border-kosh-border">
             <Text className="text-lg">🔔</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Today's Tasks */}
         <Text className="text-[17px] font-bold text-kosh-textMain mb-3">Today's Tasks</Text>
         <View className="gap-3 mb-6">
           {tasks.map((task) => (
@@ -167,7 +151,7 @@ function ManagerHome() {
               key={task.title}
               className="bg-white rounded-2xl p-4 flex-row items-center gap-4 border border-kosh-border"
             >
-              <View className={`w-12 h-12 ${task.color} rounded-xl items-center justify-center`}>
+              <View className="w-12 h-12 rounded-xl items-center justify-center" style={{ backgroundColor: task.color }}>
                 <Text className="text-2xl">{task.icon}</Text>
               </View>
               <View className="flex-1">
@@ -181,7 +165,6 @@ function ManagerHome() {
           ))}
         </View>
 
-        {/* Stats */}
         <View className="flex-row gap-3">
           <View className="flex-1 bg-white rounded-2xl p-4 border border-kosh-border">
             <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Today's Issues</Text>
@@ -200,32 +183,69 @@ function ManagerHome() {
 
 export default function HomeScreen() {
   const [role, setRole] = useState<"owner" | "manager">("owner");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [health, setHealth] = useState<HealthData>({ score: 0, label: "", critical: 0, low: 0, healthy: 0, total: 0 });
+  const [recs, setRecs] = useState<Recommendation[]>([]);
+  const [urgentItems, setUrgentItems] = useState<InventoryItem[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const auth = await loadAuth();
+        if (!auth.token) throw new Error("Not authenticated");
+        const [healthData, recsData, inventoryData] = await Promise.allSettled([
+          getInventoryHealth(auth.token),
+          getAIRecommendations(auth.token),
+          getInventory(auth.token),
+        ]);
+        if (healthData.status === "fulfilled") setHealth(healthData.value);
+        if (recsData.status === "fulfilled") setRecs(recsData.value);
+        if (inventoryData.status === "fulfilled") {
+          setUrgentItems(inventoryData.value.filter(i => isUrgent(i.status)));
+        }
+      } catch (e: any) {
+        setError(e.message || "Failed to load data");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">
       {/* Role Switcher */}
       <View className="flex-row items-center justify-center py-2 px-4">
         <View className="flex-row bg-white rounded-full p-1 border border-kosh-border gap-1">
-          <TouchableOpacity
-            onPress={() => setRole("owner")}
-            className={`px-4 py-1.5 rounded-full ${role === "owner" ? "bg-kosh-textMain" : ""}`}
-          >
-            <Text className={`text-[11px] font-bold uppercase tracking-wider ${role === "owner" ? "text-white" : "text-kosh-textMuted"}`}>
-              Owner View
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setRole("manager")}
-            className={`px-4 py-1.5 rounded-full ${role === "manager" ? "bg-kosh-textMain" : ""}`}
-          >
-            <Text className={`text-[11px] font-bold uppercase tracking-wider ${role === "manager" ? "text-white" : "text-kosh-textMuted"}`}>
-              Manager View
-            </Text>
-          </TouchableOpacity>
+          {(["owner", "manager"] as const).map(r => (
+            <TouchableOpacity
+              key={r}
+              onPress={() => setRole(r)}
+              className={`px-4 py-1.5 rounded-full ${role === r ? "bg-kosh-textMain" : ""}`}
+            >
+              <Text className={`text-[11px] font-bold uppercase tracking-wider ${role === r ? "text-white" : "text-kosh-textMuted"}`}>
+                {r === "owner" ? "Owner View" : "Manager View"}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 
-      {role === "owner" ? <OwnerHome /> : <ManagerHome />}
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#1B4D36" />
+        </View>
+      ) : error ? (
+        <View className="flex-1 items-center justify-center px-6">
+          <Text className="text-red-500 text-center font-medium">{error}</Text>
+        </View>
+      ) : role === "owner" ? (
+        <OwnerHome health={health} recs={recs} urgentItems={urgentItems} />
+      ) : (
+        <ManagerHome health={health} />
+      )}
     </SafeAreaView>
   );
 }

@@ -1,17 +1,33 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { INVENTORY } from "../../components/inventory-data";
+import { loadAuth } from "../../lib/auth-store";
+import { logWastage } from "../../lib/api";
 
 const REASONS = ["Spoiled", "Expired", "Overcooked", "Damaged", "Spillage", "Other"];
 
 export default function LogWastageScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const item = INVENTORY.find(i => i.id === id);
+  const { id, itemName, unit } = useLocalSearchParams<{ id: string; itemName: string; unit: string }>();
   const [qty, setQty] = useState("");
   const [reason, setReason] = useState("Spoiled");
   const [notes, setNotes] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSave() {
+    if (!qty) return;
+    setLoading(true);
+    try {
+      const auth = await loadAuth();
+      if (!auth.token) throw new Error("Not authenticated");
+      await logWastage(auth.token, itemName, parseFloat(qty), unit, reason);
+      Alert.alert("Success", "Wastage logged", [{ text: "OK", onPress: () => router.back() }]);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to log wastage");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">
@@ -25,14 +41,12 @@ export default function LogWastageScreen() {
               <Text className="text-[28px] text-kosh-textMain">‹</Text>
             </TouchableOpacity>
             <Text className="text-[26px] font-bold text-kosh-textMain mb-1">Log Wastage</Text>
-            <Text className="text-kosh-textMuted text-[15px] mb-8">
-              {item?.name} · Available: {item?.quantity} {item?.unit}
-            </Text>
+            <Text className="text-kosh-textMuted text-[15px] mb-8">{itemName}</Text>
 
             <View className="gap-5">
               <View>
                 <Text className="text-[13px] font-bold text-kosh-textMuted mb-2 uppercase tracking-wide">
-                  Quantity Wasted ({item?.unit})
+                  Quantity Wasted ({unit})
                 </Text>
                 <TextInput
                   value={qty}
@@ -76,13 +90,16 @@ export default function LogWastageScreen() {
             </View>
 
             <TouchableOpacity
-              onPress={() => router.back()}
-              disabled={!qty}
+              onPress={handleSave}
+              disabled={!qty || loading}
               className="w-full bg-kosh-primary py-[18px] rounded-full items-center"
               style={{ marginTop: 32 }}
               activeOpacity={0.85}
             >
-              <Text className="text-white font-bold text-[17px]">Log Wastage</Text>
+              {loading
+                ? <ActivityIndicator color="white" />
+                : <Text className="text-white font-bold text-[17px]">Log Wastage</Text>
+              }
             </TouchableOpacity>
           </View>
         </ScrollView>

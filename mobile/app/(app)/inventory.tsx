@@ -1,22 +1,131 @@
-import { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, TextInput } from "react-native";
+import { useState, useEffect, useRef } from "react";
+import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { INVENTORY, CATEGORIES, getStatus, getStatusColor, InventoryItem } from "../../components/inventory-data";
+import { loadAuth } from "../../lib/auth-store";
+import { getInventory } from "../../lib/api";
+
+const CATEGORIES = ["All", "Produce", "Meat", "Dairy", "Dry Goods", "Spices", "Beverages"];
+
+type APIItem = {
+  id: string;
+  item: string;
+  unit: string;
+  current_qty: number;
+  reorder_threshold: number;
+  category: string | null;
+  status: string;
+};
+
+function normalizeStatus(status: string): "critical" | "low" | "healthy" {
+  const s = status.toLowerCase();
+  if (s === "out_of_stock" || s === "out of stock") return "critical";
+  if (s === "critical") return "critical";
+  if (s === "low") return "low";
+  return "healthy";
+}
+
+function getStatusColor(status: string): string {
+  const s = normalizeStatus(status);
+  if (s === "critical") return "#EF4444";
+  if (s === "low") return "#EAB308";
+  return "#22C55E";
+}
+
+function getStatusLabel(status: string): string {
+  const raw = status.toLowerCase();
+  if (raw === "out_of_stock") return "Out of Stock";
+  if (raw === "critical") return "Critical";
+  if (raw === "low") return "Low";
+  return "Healthy";
+}
+
+function Section({ title, items, color }: { title: string; items: APIItem[]; color: string }) {
+  return (
+    <View className="mb-4">
+      <Text className="text-[13px] font-bold mb-2 uppercase tracking-wide" style={{ color }}>
+        {title}
+      </Text>
+      <View className="bg-white rounded-2xl border border-kosh-border overflow-hidden">
+        {items.map((item, idx) => (
+          <TouchableOpacity
+            key={item.id}
+            onPress={() => router.push({ pathname: "/(app)/item-detail", params: { itemJson: JSON.stringify(item) } })}
+            className={`px-4 py-3 flex-row items-center gap-3 ${idx < items.length - 1 ? "border-b border-kosh-border" : ""}`}
+          >
+            <View className="w-10 h-10 bg-kosh-bg rounded-xl items-center justify-center">
+              <Text className="text-xl">📦</Text>
+            </View>
+            <View className="flex-1">
+              <Text className="text-[14px] font-semibold text-kosh-textMain">{item.item}</Text>
+              <Text className="text-[12px] text-kosh-textMuted">{item.category || "General"}</Text>
+            </View>
+            <View className="items-end">
+              <Text className="text-[14px] font-bold text-kosh-textMain">
+                {item.current_qty} {item.unit}
+              </Text>
+              <View className="flex-row items-center gap-1" style={{ marginTop: 2 }}>
+                <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getStatusColor(item.status) }} />
+                <Text className="text-[11px] font-medium" style={{ color: getStatusColor(item.status) }}>
+                  {getStatusLabel(item.status)}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+}
 
 export default function InventoryScreen() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [items, setItems] = useState<APIItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const filtered = INVENTORY.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = activeCategory === "All" || item.category === activeCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const fetchInventory = async (searchVal: string, category: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const auth = await loadAuth();
+      if (!auth.token) throw new Error("Not authenticated");
+      const params: Record<string, string> = {};
+      if (searchVal) params.search = searchVal;
+      if (category !== "All") params.category = category;
+      const data = await getInventory(auth.token, params);
+      setItems(data);
+    } catch (e: any) {
+      setError(e.message || "Failed to load inventory");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const critical = filtered.filter(i => ["Out of Stock", "Critical"].includes(getStatus(i)));
-  const low = filtered.filter(i => getStatus(i) === "Low");
-  const healthy = filtered.filter(i => getStatus(i) === "Healthy");
+  // Initial load
+  useEffect(() => {
+    fetchInventory("", "All");
+  }, []);
+
+  // Category change — immediate
+  useEffect(() => {
+    fetchInventory(search, activeCategory);
+  }, [activeCategory]);
+
+  // Search — debounced 300ms
+  const handleSearch = (text: string) => {
+    setSearch(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchInventory(text, activeCategory);
+    }, 300);
+  };
+
+  const critical = items.filter(i => normalizeStatus(i.status) === "critical");
+  const low = items.filter(i => normalizeStatus(i.status) === "low");
+  const healthy = items.filter(i => normalizeStatus(i.status) === "healthy");
 
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">
@@ -30,7 +139,7 @@ export default function InventoryScreen() {
             placeholder="Search items..."
             placeholderTextColor="#687076"
             value={search}
-            onChangeText={setSearch}
+            onChangeText={handleSearch}
             className="flex-1 text-kosh-textMain text-[15px]"
           />
         </View>
@@ -53,56 +162,26 @@ export default function InventoryScreen() {
         </ScrollView>
       </View>
 
-      <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false}>
-        {critical.length > 0 && (
-          <Section title={`Critical (${critical.length})`} items={critical} color="#EF4444" />
-        )}
-        {low.length > 0 && (
-          <Section title={`Low (${low.length})`} items={low} color="#EAB308" />
-        )}
-        {healthy.length > 0 && (
-          <Section title={`Healthy (${healthy.length})`} items={healthy} color="#22C55E" />
-        )}
-        <View style={{ height: 32 }} />
-      </ScrollView>
+      {loading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#1B4D36" />
+        </View>
+      ) : error ? (
+        <View className="flex-1 items-center justify-center px-6">
+          <Text className="text-red-500 text-center font-medium">{error}</Text>
+        </View>
+      ) : items.length === 0 ? (
+        <View className="flex-1 items-center justify-center">
+          <Text className="text-kosh-textMuted text-[15px]">No items found</Text>
+        </View>
+      ) : (
+        <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false}>
+          {critical.length > 0 && <Section title={`Critical (${critical.length})`} items={critical} color="#EF4444" />}
+          {low.length > 0 && <Section title={`Low (${low.length})`} items={low} color="#EAB308" />}
+          {healthy.length > 0 && <Section title={`Healthy (${healthy.length})`} items={healthy} color="#22C55E" />}
+          <View style={{ height: 32 }} />
+        </ScrollView>
+      )}
     </SafeAreaView>
-  );
-}
-
-function Section({ title, items, color }: { title: string; items: InventoryItem[]; color: string }) {
-  return (
-    <View className="mb-4">
-      <Text className="text-[13px] font-bold mb-2 uppercase tracking-wide" style={{ color }}>
-        {title}
-      </Text>
-      <View className="bg-white rounded-2xl border border-kosh-border overflow-hidden">
-        {items.map((item, idx) => (
-          <TouchableOpacity
-            key={item.id}
-            onPress={() => router.push({ pathname: "/(app)/item-detail", params: { id: item.id } })}
-            className={`px-4 py-3 flex-row items-center gap-3 ${idx < items.length - 1 ? "border-b border-kosh-border" : ""}`}
-          >
-            <View className="w-10 h-10 bg-kosh-bg rounded-xl items-center justify-center">
-              <Text className="text-xl">{item.img}</Text>
-            </View>
-            <View className="flex-1">
-              <Text className="text-[14px] font-semibold text-kosh-textMain">{item.name}</Text>
-              <Text className="text-[12px] text-kosh-textMuted">{item.category}</Text>
-            </View>
-            <View className="items-end">
-              <Text className="text-[14px] font-bold text-kosh-textMain">
-                {item.quantity} {item.unit}
-              </Text>
-              <View className="flex-row items-center gap-1" style={{ marginTop: 2 }}>
-                <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getStatusColor(getStatus(item)) }} />
-                <Text className="text-[11px] font-medium" style={{ color: getStatusColor(getStatus(item)) }}>
-                  {getStatus(item)}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
   );
 }

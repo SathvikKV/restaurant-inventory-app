@@ -1,11 +1,22 @@
-import { useState, useRef } from "react";
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
-import { router } from "expo-router";
+import { useState, useRef, useEffect } from "react";
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { verifyOTP } from "../../lib/api";
+import { saveAuth } from "../../lib/auth-store";
 
 export default function OtpScreen() {
+  const { phone, mockOtp } = useLocalSearchParams<{ phone: string; mockOtp: string }>();
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [loading, setLoading] = useState(false);
   const inputs = useRef<(TextInput | null)[]>([]);
+
+  // Auto-fill mock OTP in dev mode
+  useEffect(() => {
+    if (mockOtp && mockOtp.length === 6) {
+      setOtp(mockOtp.split(""));
+    }
+  }, [mockOtp]);
 
   const handleChange = (val: string, idx: number) => {
     const cleaned = val.replace(/\D/g, "");
@@ -14,10 +25,35 @@ export default function OtpScreen() {
     setOtp(updated);
     if (cleaned && idx < 5) {
       inputs.current[idx + 1]?.focus();
-    } else if (idx === 5 && cleaned) {
-      setTimeout(() => router.push("/onboarding/create-restaurant"), 400);
     }
   };
+
+  async function handleVerify() {
+    const code = otp.join("");
+    if (code.length < 6) return;
+    setLoading(true);
+    try {
+      const result = await verifyOTP(phone, code);
+      await saveAuth({
+        token: result.access_token,
+        userId: result.user_id,
+        role: result.role,
+        tenantId: result.tenant_id,
+        schema: result.schema,
+        restaurantName: null,
+        needsRestaurantSelection: result.needs_restaurant_selection,
+      });
+      if (result.needs_restaurant_selection) {
+        router.push("/onboarding/create-restaurant");
+      } else {
+        router.replace("/(app)/home");
+      }
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Invalid OTP");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">
@@ -29,7 +65,7 @@ export default function OtpScreen() {
           <View>
             <TouchableOpacity
               onPress={() => router.back()}
-              className="w-12 h-12 -ml-3 rounded-full items-center justify-center mb-6"
+              className="w-10 h-10 -ml-2 rounded-full items-center justify-center mb-6"
             >
               <Text className="text-[28px] text-kosh-textMain">‹</Text>
             </TouchableOpacity>
@@ -37,7 +73,7 @@ export default function OtpScreen() {
               Enter OTP
             </Text>
             <Text className="text-kosh-textMuted text-[16px] mb-10 font-medium leading-relaxed">
-              We've sent a 6-digit code to your number.
+              We've sent a 6-digit code to {phone}.
             </Text>
             <View className="flex-row gap-3 justify-between mb-8">
               {otp.map((digit, idx) => (
@@ -57,12 +93,15 @@ export default function OtpScreen() {
             </Text>
           </View>
           <TouchableOpacity
-            onPress={() => router.push("/onboarding/create-restaurant")}
-            disabled={otp.join("").length < 6}
+            onPress={handleVerify}
+            disabled={otp.join("").length < 6 || loading}
             className="w-full bg-kosh-primary py-[18px] rounded-full items-center"
             activeOpacity={0.85}
           >
-            <Text className="text-white font-bold text-[17px]">Verify</Text>
+            {loading
+              ? <ActivityIndicator color="white" />
+              : <Text className="text-white font-bold text-[17px]">Verify</Text>
+            }
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

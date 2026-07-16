@@ -1,10 +1,9 @@
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { useState, useEffect } from "react";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-
-// TODO: Replace mock user data with:
-// GET /api/v1/auth/me -> user profile
-// POST /api/v1/auth/logout -> clear token and redirect to onboarding
+import { loadAuth, clearAuth } from "../../lib/auth-store";
+import { getMe } from "../../lib/api";
 
 const MENU_SECTIONS = [
   {
@@ -34,6 +33,30 @@ const MENU_SECTIONS = [
 ];
 
 export default function MoreScreen() {
+  const [profile, setProfile] = useState<{ name: string; phone: string; role: string } | null>(null);
+  const [restaurantName, setRestaurantName] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const auth = await loadAuth();
+        if (!auth.token) return;
+        setRestaurantName(auth.restaurantName);
+        const me = await getMe(auth.token);
+        setProfile({ name: me.name, phone: me.phone, role: me.role });
+      } catch {}
+    })();
+  }, []);
+
+  async function handleLogout() {
+    await clearAuth();
+    router.replace("/onboarding/welcome");
+  }
+
+  const initials = profile?.name
+    ? profile.name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2)
+    : "—";
+
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -42,11 +65,18 @@ export default function MoreScreen() {
           {/* Profile Card */}
           <View className="bg-white rounded-2xl p-4 border border-kosh-border mb-6 flex-row items-center gap-4">
             <View className="w-14 h-14 bg-kosh-primary rounded-full items-center justify-center">
-              <Text className="text-white text-[22px] font-bold">A</Text>
+              {profile
+                ? <Text className="text-white text-[20px] font-bold">{initials}</Text>
+                : <ActivityIndicator color="white" />
+              }
             </View>
             <View className="flex-1">
-              <Text className="text-[17px] font-bold text-kosh-textMain">Aditya Sharma</Text>
-              <Text className="text-[13px] text-kosh-textMuted">Owner · Minerva Coffee Shop</Text>
+              <Text className="text-[17px] font-bold text-kosh-textMain">
+                {profile?.name ?? "Loading..."}
+              </Text>
+              <Text className="text-[13px] text-kosh-textMuted">
+                {profile ? `${profile.role.charAt(0).toUpperCase() + profile.role.slice(1)}${restaurantName ? ` · ${restaurantName}` : ""}` : ""}
+              </Text>
             </View>
             <TouchableOpacity className="w-8 h-8 items-center justify-center">
               <Text className="text-kosh-textMuted text-[18px]">›</Text>
@@ -77,7 +107,7 @@ export default function MoreScreen() {
 
           {/* Logout */}
           <TouchableOpacity
-            onPress={() => router.replace("/onboarding/welcome")}
+            onPress={handleLogout}
             className="bg-white rounded-2xl p-4 border flex-row items-center gap-3"
             style={{ borderColor: "#FEE2E2" }}
           >

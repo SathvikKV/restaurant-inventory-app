@@ -1,16 +1,32 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { INVENTORY } from "../../components/inventory-data";
+import { loadAuth } from "../../lib/auth-store";
+import { issueStock } from "../../lib/api";
 
 const DESTINATIONS = ["Kitchen", "Bar", "Bakery", "Pantry", "Events"];
 
 export default function IssueStockScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const item = INVENTORY.find(i => i.id === id);
+  const { id, itemName, unit, currentQty } = useLocalSearchParams<{ id: string; itemName: string; unit: string; currentQty: string }>();
   const [qty, setQty] = useState("");
   const [destination, setDestination] = useState("Kitchen");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSave() {
+    if (!qty) return;
+    setLoading(true);
+    try {
+      const auth = await loadAuth();
+      if (!auth.token) throw new Error("Not authenticated");
+      await issueStock(auth.token, id, parseFloat(qty), destination);
+      Alert.alert("Success", "Stock issued", [{ text: "OK", onPress: () => router.back() }]);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to issue stock");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">
@@ -25,13 +41,13 @@ export default function IssueStockScreen() {
             </TouchableOpacity>
             <Text className="text-[26px] font-bold text-kosh-textMain mb-1">Issue Stock</Text>
             <Text className="text-kosh-textMuted text-[15px] mb-8">
-              {item?.name} · Available: {item?.quantity} {item?.unit}
+              {itemName} · Available: {currentQty} {unit}
             </Text>
 
             <View className="gap-5">
               <View>
                 <Text className="text-[13px] font-bold text-kosh-textMuted mb-2 uppercase tracking-wide">
-                  Quantity ({item?.unit})
+                  Quantity ({unit})
                 </Text>
                 <TextInput
                   value={qty}
@@ -62,12 +78,15 @@ export default function IssueStockScreen() {
           </View>
 
           <TouchableOpacity
-            onPress={() => router.back()}
-            disabled={!qty}
+            onPress={handleSave}
+            disabled={!qty || loading}
             className="w-full bg-kosh-primary py-[18px] rounded-full items-center"
             activeOpacity={0.85}
           >
-            <Text className="text-white font-bold text-[17px]">Issue Stock</Text>
+            {loading
+              ? <ActivityIndicator color="white" />
+              : <Text className="text-white font-bold text-[17px]">Issue Stock</Text>
+            }
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
