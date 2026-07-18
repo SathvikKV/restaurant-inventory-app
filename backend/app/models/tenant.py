@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, DateTime, Float, Integer, Boolean, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
@@ -22,9 +22,9 @@ def make_tenant_models(schema: str):
         previous_qty: Mapped[float] = mapped_column(Float, default=0.0)
         reorder_threshold: Mapped[float] = mapped_column(Float, default=0.0)
         category: Mapped[str] = mapped_column(String(100), nullable=True)
-        last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-        previous_updated: Mapped[datetime] = mapped_column(DateTime, nullable=True)
-        sheets_synced_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+        last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+        previous_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+        sheets_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     class Purchase(Base):
         __tablename__ = "purchases"
@@ -32,13 +32,13 @@ def make_tenant_models(schema: str):
 
         id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
         supplier: Mapped[str] = mapped_column(String(255), nullable=True)
-        invoice_date: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+        invoice_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
         items: Mapped[dict] = mapped_column(JSON, nullable=False)
         recorded_by: Mapped[str] = mapped_column(String(255), nullable=True)
         s3_key: Mapped[str] = mapped_column(String(500), nullable=True)
         status: Mapped[str] = mapped_column(String(50), default="active")
         source: Mapped[str] = mapped_column(String(50), default="whatsapp")
-        created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+        created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     class Issue(Base):
         __tablename__ = "issues"
@@ -52,7 +52,7 @@ def make_tenant_models(schema: str):
         recorded_by: Mapped[str] = mapped_column(String(255), nullable=True)
         s3_key: Mapped[str] = mapped_column(String(500), nullable=True)
         status: Mapped[str] = mapped_column(String(50), default="active")
-        created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+        created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     class WastageEntry(Base):
         __tablename__ = "wastage"
@@ -64,7 +64,7 @@ def make_tenant_models(schema: str):
         unit: Mapped[str] = mapped_column(String(50), nullable=False)
         reason: Mapped[str] = mapped_column(String(500), nullable=True)
         recorded_by: Mapped[str] = mapped_column(String(255), nullable=True)
-        created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+        created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     class ItemAlias(Base):
         __tablename__ = "item_aliases"
@@ -73,7 +73,7 @@ def make_tenant_models(schema: str):
         id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
         alias: Mapped[str] = mapped_column(String(255), nullable=False)
         canonical_name: Mapped[str] = mapped_column(String(255), nullable=False)
-        created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+        created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     class PendingConfirmation(Base):
         __tablename__ = "confirmations"
@@ -87,7 +87,7 @@ def make_tenant_models(schema: str):
         unit: Mapped[str] = mapped_column(String(50), nullable=False)
         status: Mapped[str] = mapped_column(String(50), default="pending")
         source: Mapped[str] = mapped_column(String(50), default="whatsapp")
-        created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+        created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     return {
         "inventory": InventoryItem,
