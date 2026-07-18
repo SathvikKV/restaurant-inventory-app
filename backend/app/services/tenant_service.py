@@ -1,7 +1,7 @@
 import uuid
 import re
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, text
 from app.models.public import Tenant, User
 from app.models.tenant import make_tenant_models
 from app.database import create_tenant_schema, engine, Base
@@ -52,12 +52,10 @@ async def create_tenant(
     await db.commit()
     await db.refresh(tenant)
 
-    # Create the Postgres schema
-    await create_tenant_schema(schema_name)
-
-    # Create tables in the new schema
+    # Create schema AND tables in the same connection to avoid pooler isolation issues
     make_tenant_models(schema_name)
     async with engine.begin() as conn:
+        await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
         await conn.run_sync(Base.metadata.create_all)
 
     return tenant
