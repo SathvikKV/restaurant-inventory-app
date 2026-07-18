@@ -5,7 +5,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
 
-def make_tenant_models(schema: str):
+_model_cache: dict = {}
+
+def make_tenant_models(schema: str) -> dict:
+    if schema in _model_cache:
+        return _model_cache[schema]
     """
     Returns a dict of SQLAlchemy model classes scoped to the given schema.
     Call this once per tenant at startup or on first request.
@@ -89,7 +93,7 @@ def make_tenant_models(schema: str):
         source: Mapped[str] = mapped_column(String(50), default="whatsapp")
         created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    return {
+    result = {
         "inventory": InventoryItem,
         "purchases": Purchase,
         "issues": Issue,
@@ -97,3 +101,5 @@ def make_tenant_models(schema: str):
         "item_aliases": ItemAlias,
         "confirmations": PendingConfirmation,
     }
+    _model_cache[schema] = result
+    return result

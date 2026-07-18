@@ -25,15 +25,17 @@ async def food_cost_trend(
     Purchase = models["purchases"]
 
     since = datetime.now(timezone.utc) - timedelta(days=days)
-    result = await db.execute(
+    day_trunc = func.date_trunc('day', Purchase.created_at)
+    stmt = (
         select(
-            func.date_trunc('day', Purchase.created_at).label("day"),
+            day_trunc.label("day"),
             func.count(Purchase.id).label("num_orders"),
         )
         .where(Purchase.created_at >= since)
-        .group_by(func.date_trunc('day', Purchase.created_at))
-        .order_by(func.date_trunc('day', Purchase.created_at))
+        .group_by(day_trunc)
+        .order_by(day_trunc)
     )
+    result = await db.execute(stmt)
     rows = result.fetchall()
     return [
         {"day": row.day.strftime("%a %d %b") if row.day else "", "num_orders": row.num_orders}
