@@ -52,10 +52,13 @@ async def create_tenant(
     await db.commit()
     await db.refresh(tenant)
 
-    # Create schema AND tables in the same connection to avoid pooler isolation issues
     make_tenant_models(schema_name)
-    async with engine.begin() as conn:
+    # Create schema in autocommit mode so it's immediately visible
+    async with engine.connect() as conn:
+        await conn.execution_options(isolation_level="AUTOCOMMIT")
         await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"'))
+    # Create tables in a separate transaction after schema exists
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     return tenant
