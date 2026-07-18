@@ -104,10 +104,10 @@ async def create_inventory_item(
     InventoryItem = models["inventory"]
 
     new_item = InventoryItem(
-        item=body.name,
+        item=body.item,
         unit=body.unit,
         category=body.category,
-        reorder_threshold=body.reorder_level,
+        reorder_threshold=body.reorder_threshold,
         current_qty=0.0
     )
     db.add(new_item)
@@ -133,12 +133,12 @@ async def update_inventory_item(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
 
-    if body.name is not None:
-        item.item = body.name
+    if body.item is not None:
+        item.item = body.item
     if body.category is not None:
         item.category = body.category
-    if body.reorder_level is not None:
-        item.reorder_threshold = body.reorder_level
+    if body.reorder_threshold is not None:
+        item.reorder_threshold = body.reorder_threshold
 
     item.last_updated = datetime.now(timezone.utc)
     await db.commit()
