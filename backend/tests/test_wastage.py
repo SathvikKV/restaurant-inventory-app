@@ -1,24 +1,33 @@
 import pytest
 
+@pytest.fixture(scope="module")
+def wastage_item_id(client, scoped_token):
+    r = client.post("/inventory/", json={
+        "item": "Test Paneer",
+        "unit": "kg",
+        "current_qty": 10.0,
+        "reorder_threshold": 2.0,
+        "category": "Dairy"
+    }, headers={"Authorization": f"Bearer {scoped_token}"})
+    assert r.status_code in [200, 201], f"Create inventory failed: {r.text}"
+    return r.json()["id"]
+
 def test_list_wastage_empty(client, scoped_token):
     r = client.get("/wastage/", headers={"Authorization": f"Bearer {scoped_token}"})
     assert r.status_code == 200
     assert isinstance(r.json(), list)
 
-def test_create_wastage(client, scoped_token):
+def test_create_wastage(client, scoped_token, wastage_item_id):
     r = client.post("/wastage/", json={
-        "item": "Test Paneer",
-        "qty": 2.0,
-        "unit": "kg",
+        "item_id": wastage_item_id,
+        "quantity": 2.0,
         "reason": "Spoiled"
     }, headers={"Authorization": f"Bearer {scoped_token}"})
-    assert r.status_code in [200, 201]
+    assert r.status_code in [200, 201], f"Create wastage failed: {r.text}"
     data = r.json()
-    assert data["item"] == "Test Paneer"
-    assert data["qty"] == 2.0
+    assert data["quantity"] == 2.0
 
 def test_wastage_summary(client, scoped_token):
     r = client.get("/wastage/summary?days=7", headers={"Authorization": f"Bearer {scoped_token}"})
     assert r.status_code == 200
-    data = r.json()
-    assert isinstance(data, dict)
+    assert isinstance(r.json(), dict)
