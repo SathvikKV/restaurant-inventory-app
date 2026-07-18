@@ -4,16 +4,18 @@ Call get_tenant_models(schema) to get the models for a tenant.
 """
 from app.models.tenant import make_tenant_models
 
-_registry: dict = {}
+_registry_cache: dict = {}
 
 def get_tenant_models(schema: str) -> dict:
     """
     Returns cached tenant models for the given schema.
     Creates and caches them on first call.
     """
-    if schema not in _registry:
-        _registry[schema] = make_tenant_models(schema)
-    return _registry[schema]
+    if schema in _registry_cache:
+        return _registry_cache[schema]
+    models = make_tenant_models(schema)
+    _registry_cache[schema] = models
+    return models
 
 
 def require_schema(user: dict) -> str:

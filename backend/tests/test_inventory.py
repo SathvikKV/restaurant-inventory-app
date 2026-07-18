@@ -7,7 +7,7 @@ def item_id(client, scoped_token):
         "unit": "kg",
         "current_qty": 25.0,
         "reorder_threshold": 5.0,
-        "category": "Dry Goods"
+        "category": "Grains"
     }, headers={"Authorization": f"Bearer {scoped_token}"})
     assert r.status_code in [200, 201], f"Create inventory failed: {r.text}"
     data = r.json()
