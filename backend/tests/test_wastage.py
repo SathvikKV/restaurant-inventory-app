@@ -2,6 +2,7 @@ import pytest
 
 @pytest.fixture(scope="module")
 def wastage_item_id(client, scoped_token):
+    # Create item
     r = client.post("/inventory/", json={
         "item": "Test Paneer",
         "unit": "kg",
@@ -10,7 +11,14 @@ def wastage_item_id(client, scoped_token):
         "category": "Dairy"
     }, headers={"Authorization": f"Bearer {scoped_token}"})
     assert r.status_code in [200, 201], f"Create inventory failed: {r.text}"
-    return r.json()["id"]
+    item_id = r.json()["id"]
+    # Add stock so wastage can proceed
+    r2 = client.post(f"/inventory/{item_id}/receive", json={
+        "quantity": 10.0,
+        "notes": "Setup stock for wastage test"
+    }, headers={"Authorization": f"Bearer {scoped_token}"})
+    assert r2.status_code == 200, f"Receive stock failed: {r2.text}"
+    return item_id
 
 def test_list_wastage_empty(client, scoped_token):
     r = client.get("/wastage/", headers={"Authorization": f"Bearer {scoped_token}"})
