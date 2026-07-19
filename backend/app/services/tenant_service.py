@@ -53,26 +53,23 @@ async def create_tenant(
     await db.refresh(tenant)
 
     make_tenant_models(schema_name)
-    
-    # Use psycopg2 directly for DDL to avoid pooler transaction isolation issues
-    import psycopg2
+
+    # Use asyncpg directly with autocommit for schema DDL
+    # This bypasses the session pooler transaction isolation issue
+    import asyncpg
     import os
     
-    # Build direct connection URL from env (replace asyncpg with psycopg2 format)
     db_url = os.environ.get("DATABASE_URL", "")
-    # Convert asyncpg URL to psycopg2 format
-    sync_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+    # Convert SQLAlchemy URL to asyncpg format
+    asyncpg_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
     
-    conn = psycopg2.connect(sync_url)
-    conn.autocommit = True
-    cur = conn.cursor()
+    raw_conn = await asyncpg.connect(asyncpg_url)
     try:
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
+        await raw_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema_name}"')
     finally:
-        cur.close()
-        conn.close()
+        await raw_conn.close()
     
-    # Now create tables with SQLAlchemy async
+    # Now create tables — schema is committed and visible
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
