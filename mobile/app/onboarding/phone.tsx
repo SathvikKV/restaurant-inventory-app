@@ -1,24 +1,21 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
+import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
+import { ChevronLeft, ChevronDown } from "lucide-react-native";
 import { requestOTP } from "../../lib/api";
+import { colors } from "../../components/ui";
 
 export default function PhoneScreen() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSendOTP() {
+  async function handleContinue() {
     if (phone.length < 10) return;
     setLoading(true);
     try {
-      const fullPhone = `+91${phone}`;
-      const result = await requestOTP(fullPhone);
-      // In mock mode, auto-fill OTP for convenience
-      router.push({
-        pathname: "/onboarding/otp",
-        params: { phone: fullPhone, mockOtp: result.mock_otp || "" },
-      });
+      await requestOTP(`+91${phone}`);
+      router.push({ pathname: "/onboarding/otp", params: { phone: `+91${phone}` } });
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to send OTP");
     } finally {
@@ -27,56 +24,91 @@ export default function PhoneScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-kosh-bg">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-      >
-        <View className="flex-1 px-6 pt-6 pb-12 justify-between">
+    <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 16, paddingBottom: 48, justifyContent: "space-between" }}>
           <View>
             <TouchableOpacity
               onPress={() => router.back()}
-              className="w-12 h-12 -ml-3 rounded-full items-center justify-center mb-6"
+              style={{ width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", marginBottom: 24, marginLeft: -12 }}
             >
-              <Text className="text-[28px] text-kosh-textMain">‹</Text>
+              <ChevronLeft size={24} color={colors.textMain} strokeWidth={2} />
             </TouchableOpacity>
-            <Text className="text-[32px] font-bold text-kosh-textMain mb-4">
-              Enter your phone number
+
+            <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, textAlign: "center", letterSpacing: -0.5, lineHeight: 36, marginBottom: 12 }}>
+              Enter your{"\n"}mobile number
             </Text>
-            <Text className="text-kosh-textMuted text-[16px] mb-10 font-medium leading-relaxed">
-              We'll send you a one-time code to verify your number.
+            <Text style={{ fontSize: 15, color: colors.textMuted, fontWeight: "600", textAlign: "center", lineHeight: 22, marginBottom: 40, maxWidth: 240, alignSelf: "center" }}>
+              We'll send you an OTP to verify your number
             </Text>
-            <View className="flex-row gap-4 mb-6">
-              <View className="bg-white rounded-[20px] px-5 py-[18px] flex-row items-center gap-2 border border-kosh-border">
-                <Text className="text-xl">🇮🇳</Text>
-                <Text className="font-bold text-kosh-textMain text-[17px]">+91</Text>
-              </View>
-              <View className="flex-1 bg-white rounded-[20px] px-5 py-[18px] border border-kosh-border">
+
+            <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+              <TouchableOpacity style={{
+                backgroundColor: "white",
+                borderRadius: 20,
+                paddingHorizontal: 16,
+                paddingVertical: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                borderWidth: 1,
+                borderColor: colors.border,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.03,
+                shadowRadius: 20,
+                elevation: 1,
+              }}>
+                <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textMain }}>+91</Text>
+                <ChevronDown size={16} color={colors.textMuted} strokeWidth={2} />
+              </TouchableOpacity>
+
+              <View style={{
+                flex: 1,
+                backgroundColor: "white",
+                borderRadius: 20,
+                paddingHorizontal: 20,
+                paddingVertical: 16,
+                borderWidth: 1,
+                borderColor: colors.border,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.03,
+                shadowRadius: 20,
+                elevation: 1,
+              }}>
                 <TextInput
-                  placeholder="98765 43210"
-                  placeholderTextColor="#687076"
                   value={phone}
-                  onChangeText={(t) => setPhone(t.replace(/\D/g, "").slice(0, 10))}
+                  onChangeText={t => setPhone(t.replace(/\D/g, "").slice(0, 10))}
+                  placeholder="Enter mobile number"
+                  placeholderTextColor={colors.textMuted}
                   keyboardType="phone-pad"
-                  className="text-kosh-textMain text-[17px] font-bold"
                   autoFocus
+                  style={{ fontSize: 16, fontWeight: "800", color: colors.textMain, padding: 0 }}
                 />
               </View>
             </View>
-            <Text className="text-[13px] text-kosh-textMuted font-medium px-2">
-              We'll never share your number.
-            </Text>
           </View>
+
           <TouchableOpacity
-            onPress={handleSendOTP}
+            onPress={handleContinue}
             disabled={phone.length < 10 || loading}
-            className="w-full bg-kosh-primary py-[18px] rounded-full items-center"
             activeOpacity={0.85}
+            style={{
+              backgroundColor: phone.length < 10 ? "#A0ADB4" : colors.primary,
+              borderRadius: 24,
+              paddingVertical: 18,
+              alignItems: "center",
+              shadowColor: colors.primary,
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: phone.length < 10 ? 0 : 0.3,
+              shadowRadius: 20,
+              elevation: phone.length < 10 ? 0 : 4,
+            }}
           >
-            {loading
-              ? <ActivityIndicator color="white" />
-              : <Text className="text-white font-bold text-[17px]">Send OTP</Text>
-            }
+            <Text style={{ color: "white", fontSize: 17, fontWeight: "800", letterSpacing: -0.3 }}>
+              {loading ? "Sending..." : "Continue"}
+            </Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

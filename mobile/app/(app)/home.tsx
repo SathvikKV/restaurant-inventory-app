@@ -1,251 +1,390 @@
 import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
+import { Bell, Scan, PenLine, ArrowDownToLine, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react-native";
 import { useAuth } from "../../lib/auth-context";
-import { getInventoryHealth, getAIRecommendations, getInventory } from "../../lib/api";
+import { getInventoryHealth, getInventory, getAuditLog } from "../../lib/api";
+import { MiseLogo, colors, Card } from "../../components/ui";
 
-type HealthData = { score: number; label: string; critical: number; low: number; healthy: number; total: number };
-type Recommendation = { id: string; title: string; reason: string; item: string; current_qty: number; unit: string };
-type InventoryItem = { id: string; name: string; unit: string; quantity: number; category: string | null; status: string };
-
-function getStatusColor(status: string): string {
-  const s = status.toLowerCase();
-  if (s === "out_of_stock" || s === "out of stock") return "#EF4444";
-  if (s === "critical") return "#F97316";
-  if (s === "low") return "#EAB308";
-  return "#22C55E";
-}
-
-function isUrgent(status: string) {
-  const s = status.toLowerCase();
-  return s === "critical" || s === "out_of_stock" || s === "out of stock";
-}
-
-function OwnerHome({ health, recs, urgentItems }: { health: HealthData; recs: Recommendation[]; urgentItems: InventoryItem[] }) {
-  return (
-    <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-      <View className="px-5 pt-4 pb-6">
-
-        {/* Header */}
-        <View className="flex-row justify-between items-center mb-6">
-          <View>
-            <Text className="text-[13px] text-kosh-textMuted font-medium">Good Morning,</Text>
-            <Text className="text-[24px] font-bold text-kosh-textMain">Welcome 👋</Text>
-          </View>
-          <TouchableOpacity className="w-10 h-10 bg-white rounded-full items-center justify-center border border-kosh-border">
-            <Text className="text-lg">🔔</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Health Score Card */}
-        <View className="bg-kosh-primary rounded-3xl p-5 mb-4">
-          <View className="flex-row justify-between items-center">
-            <View className="flex-1">
-              <Text className="text-white text-[13px] font-medium mb-1" style={{ opacity: 0.7 }}>Inventory Health</Text>
-              <Text className="text-white text-[40px] font-bold" style={{ lineHeight: 44 }}>{health.score}</Text>
-              <Text className="text-white text-[13px] mt-1" style={{ opacity: 0.7 }}>out of 100</Text>
-            </View>
-            <View className="w-20 h-20 rounded-full items-center justify-center" style={{ borderWidth: 4, borderColor: "rgba(255,255,255,0.2)" }}>
-              <Text className="text-white text-[28px] font-bold">{health.score}</Text>
-            </View>
-          </View>
-          <View className="mt-4 pt-4" style={{ borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.2)" }}>
-            <Text className="text-white text-[12px] font-medium" style={{ opacity: 0.7 }}>
-              {health.critical} item{health.critical !== 1 ? "s" : ""} need attention
-            </Text>
-          </View>
-        </View>
-
-        {/* Stats Row — TODO: wire to /reports/daily-summary */}
-        <View className="flex-row gap-3 mb-4">
-          <View className="flex-1 bg-white rounded-2xl p-4 border border-kosh-border">
-            <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Today's Purchases</Text>
-            <Text className="text-kosh-textMain text-[20px] font-bold">₹42,300</Text>
-          </View>
-          <View className="flex-1 bg-white rounded-2xl p-4 border border-kosh-border">
-            <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Consumption</Text>
-            <Text className="text-kosh-textMain text-[20px] font-bold">₹31,400</Text>
-          </View>
-        </View>
-        <View className="bg-white rounded-2xl p-4 border border-kosh-border mb-4">
-          <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Today's Wastage</Text>
-          <Text className="text-kosh-textMain text-[20px] font-bold">₹2,100</Text>
-        </View>
-
-        {/* Needs Attention */}
-        {urgentItems.length > 0 && (
-          <View className="bg-white rounded-2xl border border-kosh-border mb-4 overflow-hidden">
-            <View className="px-4 pt-4 pb-2">
-              <Text className="text-[15px] font-bold text-kosh-textMain">Needs Attention</Text>
-            </View>
-            {urgentItems.slice(0, 3).map((item, idx) => (
-              <View
-                key={item.id}
-                className={`px-4 py-3 flex-row items-center gap-3 ${idx < Math.min(urgentItems.length, 3) - 1 ? "border-b border-kosh-border" : ""}`}
-              >
-                <View className="w-10 h-10 bg-red-50 rounded-xl items-center justify-center">
-                  <Text className="text-xl">⚠️</Text>
-                </View>
-                <View className="flex-1">
-                  <Text className="text-[14px] font-semibold text-kosh-textMain">{item.name}</Text>
-                  <Text className="text-[12px] text-kosh-textMuted">
-                    {item.quantity === 0 ? "Currently out of stock" : `Only ${parseFloat(item.quantity.toFixed(2))} ${item.unit} remaining`}
-                  </Text>
-                </View>
-                <Text className="text-kosh-textMuted">›</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* AI Recommendations */}
-        <View className="bg-kosh-primary rounded-2xl p-5">
-          <Text className="text-white font-bold text-[15px] mb-3">AI Recommendations</Text>
-          <View className="gap-2">
-            {recs.length > 0
-              ? recs.slice(0, 3).map(r => (
-                  <Text key={r.id} className="text-white text-[13px]" style={{ opacity: 0.8 }}>• {r.title}</Text>
-                ))
-              : (
-                  <Text className="text-white text-[13px]" style={{ opacity: 0.8 }}>No recommendations at this time.</Text>
-                )
-            }
-          </View>
-          <TouchableOpacity className="mt-4 rounded-full py-2.5 items-center" style={{ borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" }}>
-            <Text className="text-white font-semibold text-[13px]">View All Recommendations</Text>
-          </TouchableOpacity>
-        </View>
-
-      </View>
-    </ScrollView>
-  );
-}
-
-function ManagerHome({ health }: { health: HealthData }) {
-  const tasks = [
-    { icon: "📦", title: "Receive Deliveries", count: 2, color: "#EFF6FF" }, // TODO: wire to pending POs
-    { icon: "🛒", title: "Pending POs", count: 3, color: "#FFFBEB" },        // TODO: wire to purchase-orders?status=pending
-    { icon: "⚠️", title: "Low Stock Items", count: health.low + health.critical, color: "#FEF2F2" },
-    { icon: "✏️", title: "Pending Corrections", count: 2, color: "#F5F3FF" }, // TODO: wire to corrections endpoint
-  ];
-
-  return (
-    <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-      <View className="px-5 pt-4 pb-6">
-
-        {/* Header */}
-        <View className="flex-row justify-between items-center mb-6">
-          <View>
-            <Text className="text-[13px] text-kosh-textMuted font-medium">Good Morning,</Text>
-            <Text className="text-[24px] font-bold text-kosh-textMain">Manager 👋</Text>
-          </View>
-          <TouchableOpacity className="w-10 h-10 bg-white rounded-full items-center justify-center border border-kosh-border">
-            <Text className="text-lg">🔔</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text className="text-[17px] font-bold text-kosh-textMain mb-3">Today's Tasks</Text>
-        <View className="gap-3 mb-6">
-          {tasks.map((task) => (
-            <TouchableOpacity
-              key={task.title}
-              className="bg-white rounded-2xl p-4 flex-row items-center gap-4 border border-kosh-border"
-            >
-              <View className="w-12 h-12 rounded-xl items-center justify-center" style={{ backgroundColor: task.color }}>
-                <Text className="text-2xl">{task.icon}</Text>
-              </View>
-              <View className="flex-1">
-                <Text className="text-[15px] font-semibold text-kosh-textMain">{task.title}</Text>
-                <Text className="text-[13px] text-kosh-textMuted">{task.count} pending</Text>
-              </View>
-              <View className="w-6 h-6 bg-kosh-primary rounded-full items-center justify-center">
-                <Text className="text-white text-[11px] font-bold">{task.count}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View className="flex-row gap-3">
-          <View className="flex-1 bg-white rounded-2xl p-4 border border-kosh-border">
-            <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Today's Issues</Text>
-            <Text className="text-kosh-textMain text-[20px] font-bold">6 entries</Text>
-          </View>
-          <View className="flex-1 bg-white rounded-2xl p-4 border border-kosh-border">
-            <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Today's Wastage</Text>
-            <Text className="text-kosh-textMain text-[20px] font-bold">3 entries</Text>
-          </View>
-        </View>
-
-      </View>
-    </ScrollView>
-  );
-}
+type HealthData = { score: number; critical: number; low: number; healthy: number; total: number };
+type InventoryItem = { id: string; name: string; unit: string; quantity: number; status: string };
+type AuditEntry = { id?: string; description?: string; recorded_by?: string; created_at?: string; type?: string };
 
 export default function HomeScreen() {
   const { auth } = useAuth();
-  const [role, setRole] = useState<"owner" | "manager">("owner");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [health, setHealth] = useState<HealthData>({ score: 0, label: "", critical: 0, low: 0, healthy: 0, total: 0 });
-  const [recs, setRecs] = useState<Recommendation[]>([]);
+  const [health, setHealth] = useState<HealthData>({ score: 0, critical: 0, low: 0, healthy: 0, total: 0 });
   const [urgentItems, setUrgentItems] = useState<InventoryItem[]>([]);
+  const [activities, setActivities] = useState<AuditEntry[]>([]);
 
   useEffect(() => {
+    if (!auth.token) return;
     (async () => {
       setLoading(true);
-      setError(null);
       try {
-        if (!auth.token) throw new Error("Not authenticated");
-        const [healthData, recsData, inventoryData] = await Promise.allSettled([
-          getInventoryHealth(auth.token),
-          getAIRecommendations(auth.token),
-          getInventory(auth.token),
+        const [h, inv, audit] = await Promise.allSettled([
+          getInventoryHealth(auth.token!),
+          getInventory(auth.token!),
+          getAuditLog(auth.token!, 4),
         ]);
-        if (healthData.status === "fulfilled") setHealth(healthData.value);
-        if (recsData.status === "fulfilled") setRecs(recsData.value);
-        if (inventoryData.status === "fulfilled") {
-          setUrgentItems(inventoryData.value.filter(i => isUrgent(i.status)));
+        if (h.status === "fulfilled") setHealth(h.value);
+        if (inv.status === "fulfilled") {
+          setUrgentItems(inv.value.filter(i => {
+            const s = i.status.toLowerCase();
+            return s === "critical" || s === "out_of_stock" || s === "out of stock";
+          }));
         }
-      } catch (e: any) {
-        setError(e.message || "Failed to load data");
+        if (audit.status === "fulfilled") setActivities(audit.value.entries || []);
       } finally {
         setLoading(false);
       }
     })();
   }, [auth.token]);
 
-  return (
-    <SafeAreaView className="flex-1 bg-kosh-bg">
-      {/* Role Switcher */}
-      <View className="flex-row items-center justify-center py-2 px-4">
-        <View className="flex-row bg-white rounded-full p-1 border border-kosh-border gap-1">
-          {(["owner", "manager"] as const).map(r => (
-            <TouchableOpacity
-              key={r}
-              onPress={() => setRole(r)}
-              className={`px-4 py-1.5 rounded-full ${role === r ? "bg-kosh-textMain" : ""}`}
-            >
-              <Text className={`text-[11px] font-bold uppercase tracking-wider ${role === r ? "text-white" : "text-kosh-textMuted"}`}>
-                {r === "owner" ? "Owner View" : "Manager View"}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+  const restaurantName = auth.restaurantName || "Minerva Coffee Shop";
+  const score = health.score;
+  const badgeLabel = score >= 80 ? "Healthy" : "Needs Work";
+  const badgeBg = score >= 80 ? "#ECFDF5" : score >= 50 ? "#FFF7ED" : "#FEF2F2";
+  const badgeText = score >= 80 ? "#065F46" : score >= 50 ? "#9A3412" : "#991B1B";
 
-      {loading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#1B4D36" />
+  const quickActions = [
+    { label: "Receive", icon: Scan, route: "/(app)/scan-invoice", color: colors.textMain },
+    { label: "Adjust", icon: PenLine, route: "/(app)/inventory", color: colors.textMain },
+    { label: "Issue", icon: ArrowDownToLine, route: "/(app)/inventory", color: colors.textMain },
+    { label: "Waste", icon: AlertTriangle, route: "/(app)/inventory", color: "#EF4444" },
+  ];
+
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8", alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 40 }}
+      >
+
+        {/* ── Header ── */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 40 }}>
+          <View>
+            <MiseLogo size="header" />
+            <Text style={{ fontSize: 32, fontWeight: "800", letterSpacing: -1, color: colors.textMain, marginTop: 8, marginBottom: 4 }}>
+              Good morning,{"\n"}{restaurantName.split(" ")[0]}
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textMuted }}>{restaurantName}</Text>
+              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
+              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textMuted }}>Hyderabad</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/notifications")}
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: 40,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.03,
+              shadowRadius: 20,
+              elevation: 2,
+            }}
+          >
+            <Bell size={22} color={colors.textMain} strokeWidth={2} />
+            {urgentItems.length > 0 && (
+              <View style={{
+                position: "absolute",
+                top: 10,
+                right: 10,
+                width: 10,
+                height: 10,
+                borderRadius: 5,
+                backgroundColor: "#EF4444",
+                borderWidth: 2,
+                borderColor: "white",
+              }} />
+            )}
+          </TouchableOpacity>
         </View>
-      ) : error ? (
-        <View className="flex-1 items-center justify-center px-6">
-          <Text className="text-red-500 text-center font-medium">{error}</Text>
+
+        {/* ── Needs Attention ── */}
+        {urgentItems.length > 0 && (
+          <View style={{ marginBottom: 40 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16, paddingHorizontal: 4 }}>
+              <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Needs Attention</Text>
+              {urgentItems.length > 3 && (
+                <TouchableOpacity onPress={() => router.push("/(app)/notifications")}>
+                  <Text style={{ fontSize: 13, fontWeight: "800", color: colors.primary }}>See all {urgentItems.length}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={{
+              backgroundColor: colors.card,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 8,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.03,
+              shadowRadius: 20,
+              elevation: 2,
+            }}>
+              {urgentItems.slice(0, 3).map((item) => {
+                const isOut = item.quantity === 0;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    onPress={() => router.push({ pathname: "/(app)/item-detail", params: { itemJson: JSON.stringify(item) } })}
+                    activeOpacity={0.7}
+                    style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderRadius: 20 }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 16, flex: 1 }}>
+                      <View style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 16,
+                        backgroundColor: isOut ? "#FEF2F2" : "#FFF7ED",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}>
+                        <AlertTriangle size={22} color={isOut ? "#DC2626" : "#EA580C"} strokeWidth={2} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, letterSpacing: -0.2, marginBottom: 3 }}>{item.name}</Text>
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: isOut ? "#DC2626" : "#EA580C" }}>
+                          {isOut ? "Currently out of stock" : `${parseFloat(item.quantity.toFixed(2))} ${item.unit} remaining`}
+                        </Text>
+                      </View>
+                    </View>
+                    <ChevronRight size={20} color={colors.textMuted} strokeWidth={2} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* ── Inventory Health ── */}
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/inventory")}
+          activeOpacity={0.95}
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: 28,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: 28,
+            overflow: "hidden",
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 12 },
+            shadowOpacity: 0.05,
+            shadowRadius: 40,
+            elevation: 3,
+            marginBottom: 40,
+          }}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+            <View>
+              <Text style={{ fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Inventory Health</Text>
+              <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 4 }}>
+                <Text style={{ fontSize: 56, fontWeight: "800", color: colors.textMain, lineHeight: 56 }}>{score}</Text>
+                <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMuted, marginBottom: 4 }}>/100</Text>
+              </View>
+            </View>
+            <View style={{ backgroundColor: badgeBg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginTop: 8 }}>
+              <Text style={{ fontSize: 12, fontWeight: "800", color: badgeText, letterSpacing: 0.5 }}>{badgeLabel}</Text>
+            </View>
+          </View>
+          {(health.critical > 0 || health.low > 0) && (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {health.critical > 0 && (
+                <View style={{ backgroundColor: "#FFF7ED", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "800", color: "#C2410C" }}>{health.critical} Critical</Text>
+                </View>
+              )}
+              {health.low > 0 && (
+                <View style={{ backgroundColor: "#FEFCE8", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "800", color: "#A16207" }}>{health.low} Low</Text>
+                </View>
+              )}
+              {health.healthy > 0 && (
+                <View style={{ backgroundColor: "#ECFDF5", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                  <Text style={{ fontSize: 12, fontWeight: "800", color: "#065F46" }}>{health.healthy} Healthy</Text>
+                </View>
+              )}
+            </View>
+          )}
+          {/* Decorative line */}
+          <View style={{ marginTop: 20, opacity: 0.15 }}>
+            <View style={{ height: 2, backgroundColor: colors.primary, borderRadius: 1, width: "70%" }} />
+            <View style={{ height: 2, backgroundColor: colors.primary, borderRadius: 1, width: "85%", marginTop: 6, opacity: 0.6 }} />
+          </View>
+        </TouchableOpacity>
+
+        {/* ── Today's Overview ── */}
+        <View style={{ marginBottom: 40 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingHorizontal: 4 }}>
+            <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Today's Overview</Text>
+            <TouchableOpacity style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 12,
+            }}>
+              <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMain }}>Today</Text>
+              <ChevronDown size={14} color={colors.textMuted} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+          <View style={{
+            backgroundColor: colors.card,
+            borderRadius: 28,
+            borderWidth: 1,
+            borderColor: colors.border,
+            paddingVertical: 24,
+            paddingHorizontal: 24,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.03,
+            shadowRadius: 20,
+            elevation: 2,
+          }}>
+            <View style={{ gap: 10 }}>
+              <Text style={{ fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 2, textTransform: "uppercase" }}>Purchases</Text>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>₹42.3k</Text>
+            </View>
+            <View style={{ width: 1, height: 40, backgroundColor: colors.border }} />
+            <View style={{ gap: 10, alignItems: "center" }}>
+              <Text style={{ fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 2, textTransform: "uppercase" }}>Consumption</Text>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>₹31.4k</Text>
+            </View>
+            <View style={{ width: 1, height: 40, backgroundColor: colors.border }} />
+            <View style={{ gap: 10, alignItems: "flex-end" }}>
+              <Text style={{ fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 2, textTransform: "uppercase" }}>Sales</Text>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: "#059669", letterSpacing: -0.3 }}>₹1.1L</Text>
+            </View>
+          </View>
         </View>
-      ) : role === "owner" ? (
-        <OwnerHome health={health} recs={recs} urgentItems={urgentItems} />
-      ) : (
-        <ManagerHome health={health} />
-      )}
+
+        {/* ── Quick Actions ── */}
+        <View style={{ marginBottom: 40 }}>
+          <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, marginBottom: 16, paddingHorizontal: 4, letterSpacing: -0.3 }}>Quick Actions</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            {quickActions.map(({ label, icon: ActionIcon, route, color }) => (
+              <TouchableOpacity
+                key={label}
+                onPress={() => router.push(route as any)}
+                activeOpacity={0.8}
+                style={{ alignItems: "center", gap: 10, flex: 1 }}
+              >
+                <View style={{
+                  width: 64,
+                  height: 64,
+                  backgroundColor: colors.card,
+                  borderRadius: 22,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.03,
+                  shadowRadius: 20,
+                  elevation: 2,
+                }}>
+                  <ActionIcon size={26} color={color} strokeWidth={2} />
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: "800", color: colors.textMuted, letterSpacing: -0.2 }}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* ── Recent Activity ── */}
+        <View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingHorizontal: 4 }}>
+            <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Recent Activity</Text>
+            {activities.length > 0 && (
+              <TouchableOpacity onPress={() => router.push("/(app)/activity-history")}>
+                <Text style={{ fontSize: 13, fontWeight: "800", color: colors.primary }}>View feed</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {activities.length === 0 ? (
+            <View style={{
+              backgroundColor: colors.card,
+              borderRadius: 28,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 32,
+              alignItems: "center",
+            }}>
+              <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, marginBottom: 4 }}>No activity today.</Text>
+              <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: "600", textAlign: "center" }}>Operations will appear here as your team works.</Text>
+            </View>
+          ) : (
+            <View style={{
+              backgroundColor: colors.card,
+              borderRadius: 28,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: 24,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.03,
+              shadowRadius: 20,
+              elevation: 2,
+            }}>
+              {activities.slice(0, 4).map((act, idx, arr) => (
+                <View key={act.id || idx} style={{ flexDirection: "row", gap: 20, marginBottom: idx < arr.length - 1 ? 28 : 0 }}>
+                  {idx < arr.length - 1 && (
+                    <View style={{ position: "absolute", left: 7, top: 20, width: 2, height: "100%", backgroundColor: colors.border }} />
+                  )}
+                  <View style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: 8,
+                    backgroundColor: colors.card,
+                    borderWidth: 3,
+                    borderColor: colors.primary,
+                    marginTop: 2,
+                    zIndex: 1,
+                  }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, lineHeight: 20, marginBottom: 6, letterSpacing: -0.2 }}>
+                      {act.description || `${act.type || "Activity"} recorded`}
+                    </Text>
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
+                      {act.created_at ? new Date(act.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"} • {act.recorded_by || "Staff"}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+      </ScrollView>
     </SafeAreaView>
   );
 }

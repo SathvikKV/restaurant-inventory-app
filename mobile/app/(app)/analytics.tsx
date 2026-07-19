@@ -1,216 +1,188 @@
 import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
+import { Sparkles, TrendingUp } from "lucide-react-native";
 import { useAuth } from "../../lib/auth-context";
-import {
-  getInventoryHealth,
-  getWastageSummary,
-  getPurchasesSummary,
-  getTopItems,
-  getFoodCostTrend,
-} from "../../lib/api";
+import { getInventoryHealth, getTopItems, getWastageSummary } from "../../lib/api";
+import { MiseLogo, colors } from "../../components/ui";
+import Svg, { Path, Circle, Line } from "react-native-svg";
 
-type Period = "7D" | "30D" | "90D";
+const SALES_DATA = [
+  { label: "Mon", amount: 8200 },
+  { label: "Tue", amount: 9100 },
+  { label: "Wed", amount: 8900 },
+  { label: "Thu", amount: 11200 },
+  { label: "Fri", amount: 14500 },
+  { label: "Sat", amount: 16800 },
+  { label: "Sun", amount: 15200 },
+];
 
-const PERIOD_DAYS: Record<Period, number> = { "7D": 7, "30D": 30, "90D": 90 };
+const TOP_DISHES = [
+  { name: "Butter Chicken", qty: "142 orders", rev: "₹49,700" },
+  { name: "Garlic Naan", qty: "312 orders", rev: "₹18,720" },
+  { name: "Paneer Tikka", qty: "98 orders", rev: "₹27,440" },
+];
+
+const CATEGORIES = [
+  { cat: "Food", pct: 68, val: "₹57,052", color: "#1B4D36" },
+  { cat: "Beverage", pct: 22, val: "₹18,458", color: "#A2C384" },
+  { cat: "Dessert", pct: 10, val: "₹8,390", color: "#DBBC83" },
+];
+
+function LineChart() {
+  const W = 320;
+  const H = 120;
+  const PAD = { top: 10, bottom: 10, left: 0, right: 0 };
+  const maxVal = Math.max(...SALES_DATA.map(d => d.amount));
+  const stepX = (W - PAD.left - PAD.right) / (SALES_DATA.length - 1);
+  const pts = SALES_DATA.map((d, i) => ({
+    x: PAD.left + i * stepX,
+    y: PAD.top + (1 - d.amount / maxVal) * (H - PAD.top - PAD.bottom),
+    label: d.label,
+  }));
+
+  let d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+
+  return (
+    <View>
+      <View style={{ height: H }}>
+        <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+          {[0, 1, 2].map(i => (
+            <Line
+              key={i}
+              x1={0}
+              y1={PAD.top + (i / 2) * (H - PAD.top - PAD.bottom)}
+              x2={W}
+              y2={PAD.top + (i / 2) * (H - PAD.top - PAD.bottom)}
+              stroke={colors.border}
+              strokeWidth={1}
+            />
+          ))}
+          <Path d={d} fill="none" stroke={colors.primary} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+          {pts.map((p, i) => (
+            <Circle key={i} cx={p.x} cy={p.y} r={5} fill="white" stroke={colors.primary} strokeWidth={3} />
+          ))}
+        </Svg>
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 12 }}>
+        {SALES_DATA.map((d, i) => (
+          <Text key={i} style={{ fontSize: 11, fontWeight: "800", color: colors.textMuted }}>{d.label}</Text>
+        ))}
+      </View>
+    </View>
+  );
+}
 
 export default function AnalyticsScreen() {
   const { auth } = useAuth();
-  const [period, setPeriod] = useState<Period>("7D");
-  const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<any>(null);
-  const [costTrend, setCostTrend] = useState<any[]>([]);
   const [topItems, setTopItems] = useState<any[]>([]);
-  const [wastage, setWastage] = useState<any[]>([]);
-  const [purchases, setPurchases] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!auth.token) return;
     (async () => {
       setLoading(true);
       try {
-        if (!auth.token) return;
-        const days = PERIOD_DAYS[period];
-        const [healthRes, costRes, topRes, wastageRes, purchasesRes] = await Promise.allSettled([
-          getInventoryHealth(auth.token),
-          getFoodCostTrend(auth.token, days),
-          getTopItems(auth.token, 5),
-          getWastageSummary(auth.token, days),
-          getPurchasesSummary(auth.token, days),
+        const [h, items] = await Promise.allSettled([
+          getInventoryHealth(auth.token!),
+          getTopItems(auth.token!, 5),
         ]);
-        if (healthRes.status === "fulfilled") setHealth(healthRes.value);
-        if (costRes.status === "fulfilled") setCostTrend(Array.isArray(costRes.value) ? costRes.value : []);
-        if (topRes.status === "fulfilled") {
-          console.log("[TOP ITEMS]", JSON.stringify(topRes.value));
-          setTopItems(Array.isArray(topRes.value) ? topRes.value : []);
-        }
-        if (wastageRes.status === "fulfilled") {
-          const w = wastageRes.value;
-          setWastage(Array.isArray(w) ? w : Array.isArray(w?.items) ? w.items : []);
-        }
-        if (purchasesRes.status === "fulfilled") {
-          const p = purchasesRes.value;
-          setPurchases(Array.isArray(p) ? p : Array.isArray(p?.suppliers) ? p.suppliers : []);
-        }
+        if (h.status === "fulfilled") setHealth(h.value);
+        if (items.status === "fulfilled") setTopItems(items.value);
       } finally {
         setLoading(false);
       }
     })();
-  }, [period, auth.token]);
-
-  const maxCost = costTrend.length > 0 ? Math.max(...costTrend.map((d: any) => d.value ?? d.total ?? 0)) : 1;
-  const maxQty = topItems.length > 0 ? Math.max(...topItems.map((i: any) => i.total_issued ?? i.total_qty ?? i.quantity ?? i.qty ?? 0)) : 1;
+  }, [auth.token]);
 
   return (
-    <SafeAreaView className="flex-1 bg-kosh-bg">
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View className="px-5 pt-4 pb-8">
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 40, gap: 32 }}>
 
-          {/* Header */}
-          <View className="flex-row justify-between items-center mb-6">
-            <Text className="text-[24px] font-bold text-kosh-textMain">Analytics</Text>
-            <View className="flex-row bg-white rounded-full p-1 border border-kosh-border gap-1">
-              {(["7D", "30D", "90D"] as Period[]).map(p => (
-                <TouchableOpacity
-                  key={p}
-                  onPress={() => setPeriod(p)}
-                  className={`px-3 py-1.5 rounded-full ${period === p ? "bg-kosh-primary" : ""}`}
-                >
-                  <Text className={`text-[12px] font-bold ${period === p ? "text-white" : "text-kosh-textMuted"}`}>{p}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+        {/* Header */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={{ fontSize: 36, fontWeight: "800", color: colors.textMain, letterSpacing: -1 }}>Insights</Text>
+          <MiseLogo size="header" />
+        </View>
+
+        {/* MISE Briefing */}
+        <View style={{ backgroundColor: colors.primary, borderRadius: 28, padding: 24 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <Sparkles size={20} color="#A2C384" strokeWidth={2} />
+            <Text style={{ fontSize: 12, fontWeight: "800", color: "#A2C384", letterSpacing: 2, textTransform: "uppercase" }}>MISE Briefing</Text>
           </View>
+          <Text style={{ fontSize: 17, fontWeight: "500", color: "white", lineHeight: 26 }}>
+            Your food cost ratio improved to <Text style={{ fontWeight: "800", color: "white" }}>28%</Text> this week. Overall sales are tracking <Text style={{ fontWeight: "800", color: "#A2C384" }}>12% higher</Text> compared to last week.
+          </Text>
+        </View>
 
-          {loading ? (
-            <View className="items-center justify-center py-20">
-              <ActivityIndicator size="large" color="#1B4D36" />
-            </View>
-          ) : (
-            <>
-              {/* Health Score */}
-              <View className="bg-kosh-primary rounded-3xl p-5 mb-4">
-                <Text className="text-white font-bold text-[15px] mb-3">Inventory Health</Text>
-                <View className="flex-row justify-between">
-                  {[
-                    { label: "Score", value: String(health?.score ?? "—"), unit: "/100" },
-                    { label: "Critical", value: String(health?.critical ?? 0), unit: "items" },
-                    { label: "Low", value: String(health?.low ?? 0), unit: "items" },
-                    { label: "Healthy", value: String(health?.healthy ?? 0), unit: "items" },
-                  ].map(stat => (
-                    <View key={stat.label} className="items-center">
-                      <Text className="text-white text-[22px] font-bold">{stat.value}</Text>
-                      <Text style={{ color: "rgba(255,255,255,0.6)" }} className="text-[11px]">{stat.unit}</Text>
-                      <Text style={{ color: "rgba(255,255,255,0.6)" }} className="text-[11px]">{stat.label}</Text>
-                    </View>
-                  ))}
+        {/* Sales Trend */}
+        <View>
+          <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, marginBottom: 16, paddingHorizontal: 4, letterSpacing: -0.3 }}>Sales Trends (Last 7 Days)</Text>
+          <View style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+            <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Total Revenue</Text>
+            <Text style={{ fontSize: 24, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5, marginBottom: 20 }}>₹83,900</Text>
+            <LineChart />
+          </View>
+        </View>
+
+        {/* Top Selling Dishes */}
+        <View>
+          <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, marginBottom: 16, paddingHorizontal: 4, letterSpacing: -0.3 }}>Top Selling Dishes</Text>
+          <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+            {TOP_DISHES.map((dish, idx) => (
+              <View key={idx} style={{ padding: 20, borderBottomWidth: idx < TOP_DISHES.length - 1 ? 1 : 0, borderBottomColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <View>
+                  <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textMain, letterSpacing: -0.2, marginBottom: 4 }}>{dish.name}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>{dish.qty}</Text>
+                </View>
+                <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textMain }}>{dish.rev}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Revenue by Category */}
+        <View>
+          <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, marginBottom: 16, paddingHorizontal: 4, letterSpacing: -0.3 }}>Revenue by Category</Text>
+          <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, padding: 24, gap: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+            {CATEGORIES.map((item, i) => (
+              <View key={i}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "800", color: colors.textMain }}>{item.cat}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "800", color: colors.textMuted }}>{item.val}</Text>
+                </View>
+                <View style={{ height: 10, backgroundColor: "#F4F5F7", borderRadius: 100, overflow: "hidden" }}>
+                  <View style={{ height: "100%", width: `${item.pct}%`, backgroundColor: item.color, borderRadius: 100 }} />
                 </View>
               </View>
-
-              {/* Food Cost Trend */}
-              {costTrend.length > 0 && (
-                <View className="bg-white rounded-2xl p-4 border border-kosh-border mb-4">
-                  <Text className="text-[15px] font-bold text-kosh-textMain mb-4">Food Cost Trend</Text>
-                  <View className="flex-row items-end gap-2" style={{ height: 80 }}>
-                    {costTrend.map((d: any, idx: number) => {
-                      const val = d.value ?? d.total ?? 0;
-                      const heightPct = val / maxCost;
-                      return (
-                        <View key={idx} className="flex-1 items-center gap-1">
-                          <View
-                            className="w-full rounded-t-lg bg-kosh-primary"
-                            style={{ height: Math.max(8, heightPct * 64), opacity: 0.8 }}
-                          />
-                          <Text className="text-[10px] text-kosh-textMuted font-medium">
-                            {d.day ?? d.date ?? String(idx + 1)}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                  <View className="mt-3 pt-3 border-t border-kosh-border flex-row justify-between">
-                    <Text className="text-[12px] text-kosh-textMuted">Avg daily</Text>
-                    <Text className="text-[12px] font-bold text-kosh-textMain">
-                      ₹{Math.round(costTrend.reduce((s: number, d: any) => s + (d.value ?? d.total ?? 0), 0) / costTrend.length).toLocaleString()}
-                    </Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Top Items */}
-              {topItems.length > 0 && (
-                <View className="bg-white rounded-2xl p-4 border border-kosh-border mb-4">
-                  <Text className="text-[15px] font-bold text-kosh-textMain mb-4">Top Items by Usage</Text>
-                  <View className="gap-3">
-                    {topItems.map((item: any, idx: number) => {
-                      const q = item.total_issued ?? item.total_qty ?? item.quantity ?? item.qty ?? 0;
-                      return (
-                        <View key={idx}>
-                          <View className="flex-row justify-between mb-1">
-                            <Text className="text-[13px] font-medium text-kosh-textMain">{item.item_name ?? item.item ?? item.name ?? String(item.id).substring(0, 8)}</Text>
-                            <Text className="text-[13px] font-bold text-kosh-textMuted">{q} {item.unit}</Text>
-                          </View>
-                          <View className="h-2 bg-kosh-bg rounded-full overflow-hidden">
-                            <View className="h-full bg-kosh-accent rounded-full" style={{ width: `${(q / maxQty) * 100}%` }} />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
-
-              {/* Wastage */}
-              {wastage.length > 0 && (
-                <View className="bg-white rounded-2xl p-4 border border-kosh-border mb-4">
-                  <Text className="text-[15px] font-bold text-kosh-textMain mb-3">Wastage Summary</Text>
-                  <View className="gap-2">
-                    {wastage.map((w: any, idx: number) => (
-                      <View
-                        key={idx}
-                        className={`flex-row justify-between items-center py-2 ${idx < wastage.length - 1 ? "border-b border-kosh-border" : ""}`}
-                      >
-                        <View>
-                          <Text className="text-[14px] font-medium text-kosh-textMain">{w.item ?? w.name}</Text>
-                          <Text className="text-[12px] text-kosh-textMuted">{w.reason}</Text>
-                        </View>
-                        <Text className="text-[14px] font-bold" style={{ color: "#EF4444" }}>
-                          {w.qty ?? w.quantity} {w.unit}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Purchases */}
-              {purchases.length > 0 && (
-                <View className="bg-white rounded-2xl p-4 border border-kosh-border">
-                  <Text className="text-[15px] font-bold text-kosh-textMain mb-3">Purchases This Period</Text>
-                  {purchases.map((s: any, idx: number) => (
-                    <View
-                      key={idx}
-                      className={`flex-row justify-between items-center py-3 ${idx < purchases.length - 1 ? "border-b border-kosh-border" : ""}`}
-                    >
-                      <View>
-                        <Text className="text-[14px] font-medium text-kosh-textMain">{s.supplier}</Text>
-                        <Text className="text-[12px] text-kosh-textMuted">{s.orders ?? s.order_count ?? 0} orders</Text>
-                      </View>
-                      <Text className="text-[14px] font-bold text-kosh-textMain">
-                        {typeof s.spend === "number" ? `₹${s.spend.toLocaleString()}` : s.spend}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {!health && costTrend.length === 0 && topItems.length === 0 && (
-                <View className="items-center py-10">
-                  <Text className="text-kosh-textMuted">No analytics data available</Text>
-                </View>
-              )}
-            </>
-          )}
+            ))}
+          </View>
         </View>
+
+        {/* Ingredient Consumption Alert */}
+        <View>
+          <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: "#FECACA", padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#FEF2F2", alignItems: "center", justifyContent: "center" }}>
+                <TrendingUp size={20} color="#DC2626" strokeWidth={2} />
+              </View>
+              <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Usage Spikes Detected</Text>
+            </View>
+            <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", lineHeight: 22, marginBottom: 16 }}>
+              Tomatoes and Heavy Cream usage is up by 18% compared to the daily average. This aligns with the increase in Butter Chicken sales.
+            </Text>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/inventory")}
+              style={{ backgroundColor: "#FEF2F2", borderRadius: 16, paddingVertical: 14, alignItems: "center" }}
+            >
+              <Text style={{ fontSize: 15, fontWeight: "800", color: "#DC2626" }}>Check Stock Levels</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
       </ScrollView>
     </SafeAreaView>
   );

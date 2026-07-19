@@ -1,63 +1,81 @@
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { useState, useEffect } from "react";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-
-// TODO: Wire push notifications via Expo Push Notification Service
-// POST /api/v1/users/{id} with push_token when user logs in
-// Notifications triggered by backend when:
-//   - Stock drops below reorder threshold
-//   - KOT item hard blocked
-//   - Zone-2 confirmation pending > 30 minutes
-
-const NOTIFICATIONS = [
-  { id: 1, type: "critical", icon: "🔴", title: "Mutton out of stock", body: "Mutton (Curry Cut) is completely out of stock. Reorder immediately.", time: "5 min ago", unread: true },
-  { id: 2, type: "warning", icon: "🟡", title: "Low stock alert", body: "Chicken Breast is below reorder threshold (4kg remaining, reorder at 15kg).", time: "1 hr ago", unread: true },
-  { id: 3, type: "info", icon: "🔵", title: "Invoice needs review", body: "Invoice INV-1244 from Fresh Dairy Co. has items that need confirmation.", time: "2 hrs ago", unread: true },
-  { id: 4, type: "success", icon: "🟢", title: "Invoice recorded", body: "Invoice INV-1245 from KY Vegetables was successfully processed. 8 items updated.", time: "3 hrs ago", unread: false },
-  { id: 5, type: "warning", icon: "🟡", title: "Low stock alert", body: "Tomatoes is below reorder threshold (3kg remaining, reorder at 10kg).", time: "Yesterday", unread: false },
-  { id: 6, type: "success", icon: "🟢", title: "Delivery confirmed", body: "Purchase order from United Meats has been received and inventory updated.", time: "Yesterday", unread: false },
-];
+import { ChevronLeft, AlertCircle, AlertTriangle, Package } from "lucide-react-native";
+import { useAuth } from "../../lib/auth-context";
+import { getInventory } from "../../lib/api";
+import { colors } from "../../components/ui";
 
 export default function NotificationsScreen() {
+  const { auth } = useAuth();
+  const [urgentItems, setUrgentItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!auth.token) return;
+    (async () => {
+      try {
+        const data = await getInventory(auth.token!);
+        setUrgentItems(data.filter(i => {
+          const s = i.status.toLowerCase();
+          return s === "critical" || s.includes("out");
+        }));
+      } catch {}
+      finally { setLoading(false); }
+    })();
+  }, [auth.token]);
+
   return (
-    <SafeAreaView className="flex-1 bg-kosh-bg">
-      <View className="px-5 pt-4 pb-2">
-        <TouchableOpacity
-          onPress={() => router.navigate("/(app)/more")}
-          className="w-10 h-10 -ml-2 rounded-full items-center justify-center mb-4"
-        >
-          <Text className="text-[28px] text-kosh-textMain">‹</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
+          <ChevronLeft size={24} color={colors.textMain} strokeWidth={2} />
         </TouchableOpacity>
-        <View className="flex-row justify-between items-center mb-4">
-          <Text className="text-[24px] font-bold text-kosh-textMain">Notifications</Text>
-          <TouchableOpacity>
-            <Text className="text-[13px] font-semibold text-kosh-primary">Mark all read</Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
-      <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false}>
-        <View className="bg-white rounded-2xl border border-kosh-border overflow-hidden mb-8">
-          {NOTIFICATIONS.map((notif, idx) => (
-            <TouchableOpacity
-              key={notif.id}
-              className={`px-4 py-4 flex-row items-start gap-3 ${idx < NOTIFICATIONS.length - 1 ? "border-b border-kosh-border" : ""}`}
-              style={{ backgroundColor: notif.unread ? "#E8F0EC" : "white" }}
-            >
-              <Text className="text-xl" style={{ marginTop: 2 }}>{notif.icon}</Text>
-              <View className="flex-1">
-                <View className="flex-row justify-between items-start">
-                  <Text className="text-[14px] font-bold text-kosh-textMain flex-1" style={{ paddingRight: 8 }}>{notif.title}</Text>
-                  <Text className="text-[11px] text-kosh-textMuted">{notif.time}</Text>
-                </View>
-                <Text className="text-[13px] text-kosh-textMuted mt-1">{notif.body}</Text>
-              </View>
-              {notif.unread && (
-                <View className="w-2 h-2 rounded-full bg-kosh-primary" style={{ marginTop: 6 }} />
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
+        <Text style={{ fontSize: 36, fontWeight: "800", color: colors.textMain, letterSpacing: -1, marginBottom: 24 }}>Alerts</Text>
+
+        {loading ? (
+          <View style={{ paddingTop: 60, alignItems: "center" }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : urgentItems.length === 0 ? (
+          <View style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, padding: 48, alignItems: "center" }}>
+            <View style={{ width: 64, height: 64, backgroundColor: "#ECFDF5", borderRadius: 20, alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+              <Package size={32} color="#059669" strokeWidth={2} />
+            </View>
+            <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, marginBottom: 8 }}>All clear!</Text>
+            <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center" }}>No urgent items need your attention right now.</Text>
+          </View>
+        ) : (
+          <View style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+            {urgentItems.map((item, idx) => {
+              const isOut = item.quantity === 0;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() => router.push({ pathname: "/(app)/item-detail", params: { itemJson: JSON.stringify(item) } })}
+                  activeOpacity={0.7}
+                  style={{ padding: 20, borderBottomWidth: idx < urgentItems.length - 1 ? 1 : 0, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", gap: 16 }}
+                >
+                  <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: isOut ? "#FEF2F2" : "#FFF7ED", alignItems: "center", justifyContent: "center" }}>
+                    {isOut ? <AlertCircle size={22} color="#DC2626" strokeWidth={2} /> : <AlertTriangle size={22} color="#EA580C" strokeWidth={2} />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, marginBottom: 4, letterSpacing: -0.2 }}>
+                      {item.name} {isOut ? "requires replenishment" : "running low"}
+                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: isOut ? "#DC2626" : "#EA580C" }}>
+                      {isOut ? "Currently out of stock" : `${parseFloat(item.quantity.toFixed(2))} ${item.unit} remaining`}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

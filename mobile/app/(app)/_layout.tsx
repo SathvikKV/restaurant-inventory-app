@@ -1,25 +1,77 @@
 import { useEffect } from "react";
 import { Tabs, router } from "expo-router";
-import { Text, View, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore } from "../../lib/auth-store";
+import { Home, Package, BarChart2, Menu } from "lucide-react-native";
 
-function TabIcon({ name, focused }: { name: string; focused: boolean }) {
-  const icons: Record<string, string> = {
-    home: "🏠",
-    inventory: "📦",
-    analytics: "📊",
-    more: "•••",
-  };
+const PRIMARY = "#1B4D36";
+const MUTED = "#687076";
+const BORDER = "#EAECEF";
+
+function TabBar({ state, descriptors, navigation }: any) {
+  const insets = useSafeAreaInsets();
+  const tabs = [
+    { name: "home", label: "Home", Icon: Home },
+    { name: "inventory", label: "Inventory", Icon: Package },
+    { name: "analytics", label: "Insights", Icon: BarChart2 },
+    { name: "more", label: "More", Icon: Menu },
+  ];
+
+  const visibleTabs = state.routes.filter((r: any) => tabs.find(t => t.name === r.name));
+
   return (
-    <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.4 }}>
-      {icons[name] || "•"}
-    </Text>
+    <View style={{
+      flexDirection: "row",
+      backgroundColor: "white",
+      borderTopWidth: 1,
+      borderTopColor: BORDER,
+      paddingBottom: insets.bottom || 8,
+      paddingTop: 10,
+      paddingHorizontal: 8,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: -10 },
+      shadowOpacity: 0.04,
+      shadowRadius: 40,
+      elevation: 10,
+    }}>
+      {visibleTabs.map((route: any) => {
+        const tabDef = tabs.find(t => t.name === route.name);
+        if (!tabDef) return null;
+        const isFocused = state.routes[state.index]?.name === route.name;
+        const { Icon: TabIcon, label } = tabDef;
+
+        return (
+          <TouchableOpacity
+            key={route.name}
+            onPress={() => navigation.navigate(route.name)}
+            activeOpacity={0.7}
+            style={{ flex: 1, alignItems: "center", gap: 4 }}
+          >
+            <View style={{
+              width: 48,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: isFocused ? "#E8F0EC" : "transparent",
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <TabIcon size={22} color={isFocused ? PRIMARY : MUTED} strokeWidth={isFocused ? 2.5 : 2} />
+            </View>
+            <Text style={{
+              fontSize: 11,
+              fontWeight: isFocused ? "800" : "600",
+              color: isFocused ? PRIMARY : MUTED,
+              letterSpacing: 0.2,
+            }}>{label}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 }
 
 export default function AppLayout() {
-  const insets = useSafeAreaInsets();
   const auth = useAuthStore();
 
   useEffect(() => {
@@ -28,63 +80,17 @@ export default function AppLayout() {
     }
   }, [auth.token]);
 
-  if (!auth.token) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#F4F5F7" }}>
-        <ActivityIndicator size="large" color="#1B4D36" />
-      </View>
-    );
-  }
+  if (!auth.token) return null;
 
   return (
     <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopColor: "#EAECEF",
-          borderTopWidth: 1,
-          paddingBottom: insets.bottom || 8,
-          paddingTop: 8,
-          height: 60 + (insets.bottom || 0),
-        },
-        tabBarActiveTintColor: "#1B4D36",
-        tabBarInactiveTintColor: "#687076",
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: "600",
-          marginTop: 2,
-        },
-      }}
+      tabBar={(props) => <TabBar {...props} />}
+      screenOptions={{ headerShown: false }}
     >
-      <Tabs.Screen
-        name="home"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="inventory"
-        options={{
-          title: "Inventory",
-          tabBarIcon: ({ focused }) => <TabIcon name="inventory" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="analytics"
-        options={{
-          title: "Analytics",
-          tabBarIcon: ({ focused }) => <TabIcon name="analytics" focused={focused} />,
-        }}
-      />
-      <Tabs.Screen
-        name="more"
-        options={{
-          title: "More",
-          tabBarIcon: ({ focused }) => <TabIcon name="more" focused={focused} />,
-        }}
-      />
+      <Tabs.Screen name="home" />
+      <Tabs.Screen name="inventory" />
+      <Tabs.Screen name="analytics" />
+      <Tabs.Screen name="more" />
       <Tabs.Screen name="item-detail" options={{ href: null }} />
       <Tabs.Screen name="adjust-stock" options={{ href: null }} />
       <Tabs.Screen name="issue-stock" options={{ href: null }} />

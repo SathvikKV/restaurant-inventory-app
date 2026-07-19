@@ -2,109 +2,86 @@ import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { ChevronLeft, AlertCircle, Receipt } from "lucide-react-native";
 import { useAuth } from "../../lib/auth-context";
 import { getPurchaseOrders } from "../../lib/api";
-
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) {
-      return `Today, ${d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}`;
-    } else if (diffDays === 1) {
-      return `Yesterday, ${d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}`;
-    }
-    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-  } catch {
-    return iso;
-  }
-}
+import { colors } from "../../components/ui";
 
 export default function InvoiceHistoryScreen() {
   const { auth } = useAuth();
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!auth.token) return;
     (async () => {
-      setLoading(true);
-      setError(null);
       try {
-        if (!auth.token) throw new Error("Not authenticated");
-        const data = await getPurchaseOrders(auth.token);
-        setInvoices(Array.isArray(data) ? data : []);
-      } catch (e: any) {
-        setError(e.message || "Failed to load invoices");
-      } finally {
-        setLoading(false);
-      }
+        const data = await getPurchaseOrders(auth.token!);
+        setInvoices(data);
+      } catch {}
+      finally { setLoading(false); }
     })();
   }, [auth.token]);
 
+  function formatDate(dateStr: string) {
+    if (!dateStr) return "—";
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffHrs = diffMs / (1000 * 60 * 60);
+    if (diffHrs < 24) return `Today, ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    if (diffHrs < 48) return `Yesterday`;
+    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  }
+
   return (
-    <SafeAreaView className="flex-1 bg-kosh-bg">
-      <View className="px-5 pt-4 pb-2">
-        <TouchableOpacity
-          onPress={() => router.navigate("/(app)/more")}
-          className="w-10 h-10 -ml-2 rounded-full items-center justify-center mb-4"
-        >
-          <Text className="text-[28px] text-kosh-textMain">‹</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
+          <ChevronLeft size={24} color={colors.textMain} strokeWidth={2} />
         </TouchableOpacity>
-        <Text className="text-[24px] font-bold text-kosh-textMain mb-4">Invoice History</Text>
       </View>
 
-      {loading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#1B4D36" />
-        </View>
-      ) : error ? (
-        <View className="flex-1 items-center justify-center px-6">
-          <Text className="text-red-500 text-center font-medium">{error}</Text>
-        </View>
-      ) : invoices.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-kosh-textMuted text-[15px]">No invoices yet</Text>
-        </View>
-      ) : (
-        <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false}>
-          <View className="bg-white rounded-2xl border border-kosh-border overflow-hidden mb-8">
-            {invoices.map((inv: any, idx: number) => {
-              const requiresReview = inv.status === "pending";
-              const itemCount = Array.isArray(inv.items) ? inv.items.length : (inv.item_count ?? 0);
-              const amount = typeof inv.total_amount === "number"
-                ? `₹${inv.total_amount.toLocaleString()}`
-                : inv.total_amount ?? "—";
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
+        <Text style={{ fontSize: 36, fontWeight: "800", color: colors.textMain, letterSpacing: -1, marginBottom: 24 }}>Invoices</Text>
+
+        {loading ? (
+          <View style={{ paddingTop: 60, alignItems: "center" }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : invoices.length === 0 ? (
+          <View style={{ paddingTop: 60, alignItems: "center" }}>
+            <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMuted }}>No invoices yet.</Text>
+          </View>
+        ) : (
+          <View style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+            {invoices.map((inv, idx) => {
+              const needsReview = inv.status === "pending";
               return (
                 <TouchableOpacity
                   key={inv.id}
-                  className={`px-4 py-4 flex-row items-center gap-3 ${idx < invoices.length - 1 ? "border-b border-kosh-border" : ""}`}
+                  activeOpacity={0.7}
+                  style={{ padding: 20, borderBottomWidth: idx < invoices.length - 1 ? 1 : 0, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", gap: 16 }}
                 >
-                  <View className={`w-10 h-10 rounded-xl items-center justify-center ${requiresReview ? "bg-blue-50" : "bg-kosh-bg"}`}>
-                    <Text className="text-xl">{requiresReview ? "⚠️" : "🧾"}</Text>
+                  <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: needsReview ? "#EFF6FF" : "#F4F5F7", alignItems: "center", justifyContent: "center" }}>
+                    {needsReview ? <AlertCircle size={22} color="#2563EB" strokeWidth={2} /> : <Receipt size={22} color={colors.textMuted} strokeWidth={2} />}
                   </View>
-                  <View className="flex-1">
-                    <Text className="text-[14px] font-semibold text-kosh-textMain">
-                      {inv.supplier ?? inv.supplier_name ?? "Unknown Supplier"}
-                    </Text>
-                    <Text className="text-[12px] text-kosh-textMuted">
-                      {inv.id} · {formatDate(inv.created_at)}
-                    </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, marginBottom: 4, letterSpacing: -0.2 }}>{inv.supplier_name || "Unknown Supplier"}</Text>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>{formatDate(inv.created_at)}</Text>
                   </View>
-                  <View className="items-end">
-                    <Text className="text-[14px] font-bold text-kosh-textMain">{amount}</Text>
-                    <Text className="text-[11px] font-medium" style={{ color: requiresReview ? "#3B82F6" : "#22C55E" }}>
-                      {requiresReview ? "Needs Review" : "Recorded"}
-                    </Text>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, marginBottom: 4 }}>#{inv.id?.slice(-4) || "—"}</Text>
+                    <View style={{ backgroundColor: needsReview ? "#EFF6FF" : "#ECFDF5", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 100 }}>
+                      <Text style={{ fontSize: 11, fontWeight: "800", color: needsReview ? "#2563EB" : "#059669", letterSpacing: 0.5 }}>{needsReview ? "Review" : "Recorded"}</Text>
+                    </View>
                   </View>
                 </TouchableOpacity>
               );
             })}
           </View>
-        </ScrollView>
-      )}
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }

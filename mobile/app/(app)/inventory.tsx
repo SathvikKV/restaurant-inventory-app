@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { Package, ChevronDown, ChevronRight } from "lucide-react-native";
 import { useAuth } from "../../lib/auth-context";
 import { getInventory } from "../../lib/api";
-
-const CATEGORIES = ["All", "Produce", "Meat", "Dairy", "Dry Goods", "Spices", "Beverages"];
+import { MiseLogo, SearchField, colors } from "../../components/ui";
 
 type APIItem = {
   id: string;
@@ -14,184 +14,290 @@ type APIItem = {
   quantity: number;
   category: string | null;
   status: string;
+  suggested_purchase?: number;
 };
 
-function normalizeStatus(status: string): "critical" | "low" | "healthy" {
-  const s = status.toLowerCase();
-  if (s === "out_of_stock" || s === "out of stock") return "critical";
-  if (s === "critical") return "critical";
-  if (s === "low") return "low";
-  return "healthy";
-}
+const STATUS_FILTERS = ["All", "Critical", "Low", "Out of Stock"];
+const CATEGORIES = ["All Categories", "Veg", "Dairy", "Grains", "Oil", "Beverages", "Meat", "Spices"];
 
-function getStatusColor(status: string): string {
-  const s = normalizeStatus(status);
-  if (s === "critical") return "#EF4444";
-  if (s === "low") return "#EAB308";
-  return "#22C55E";
-}
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { bg: string; text: string; border: string }> = {
+    healthy: { bg: "#ECFDF5", text: "#065F46", border: "#D1FAE5" },
+    low: { bg: "#FEFCE8", text: "#A16207", border: "#FEF08A" },
+    critical: { bg: "#FFF7ED", text: "#C2410C", border: "#FED7AA" },
+    out_of_stock: { bg: "#FEF2F2", text: "#DC2626", border: "#FECACA" },
+  };
+  const s = status.toLowerCase().replace(/\s/g, "_");
+  const style = map[s] || { bg: "#F4F5F7", text: "#687076", border: "#EAECEF" };
+  const label = status === "out_of_stock" || status === "Out of Stock" ? "Out of Stock"
+    : status.charAt(0).toUpperCase() + status.slice(1);
 
-function getStatusLabel(status: string): string {
-  const raw = status.toLowerCase();
-  if (raw === "out_of_stock") return "Out of Stock";
-  if (raw === "critical") return "Critical";
-  if (raw === "low") return "Low";
-  return "Healthy";
-}
-
-function Section({ title, items, color }: { title: string; items: APIItem[]; color: string }) {
   return (
-    <View className="mb-4">
-      <Text className="text-[13px] font-bold mb-2 uppercase tracking-wide" style={{ color }}>
-        {title}
-      </Text>
-      <View className="bg-white rounded-2xl border border-kosh-border overflow-hidden">
-        {items.map((item, idx) => (
-          <TouchableOpacity
-            key={item.id}
-            onPress={() => router.push({ pathname: "/(app)/item-detail", params: { itemJson: JSON.stringify(item) } })}
-            className={`px-4 py-3 flex-row items-center gap-3 ${idx < items.length - 1 ? "border-b border-kosh-border" : ""}`}
-          >
-            <View className="w-10 h-10 bg-kosh-bg rounded-xl items-center justify-center">
-              <Text className="text-xl">📦</Text>
-            </View>
-            <View className="flex-1">
-              <Text className="text-[14px] font-semibold text-kosh-textMain">{item.name}</Text>
-              <Text className="text-[12px] text-kosh-textMuted">{item.category || "General"}</Text>
-            </View>
-            <View className="items-end">
-              <Text className="text-[14px] font-bold text-kosh-textMain">
-                {parseFloat(item.quantity.toFixed(2))} {item.unit}
-              </Text>
-              <View className="flex-row items-center gap-1" style={{ marginTop: 2 }}>
-                <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getStatusColor(item.status) }} />
-                <Text className="text-[11px] font-medium" style={{ color: getStatusColor(item.status) }}>
-                  {getStatusLabel(item.status)}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
+    <View style={{ backgroundColor: style.bg, borderWidth: 1, borderColor: style.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100 }}>
+      <Text style={{ fontSize: 11, fontWeight: "800", color: style.text, letterSpacing: 1, textTransform: "uppercase" }}>{label}</Text>
     </View>
   );
 }
 
 export default function InventoryScreen() {
   const { auth } = useAuth();
-  console.log("[INVENTORY] auth.token:", auth.token ? auth.token.substring(0, 20) + "..." : "NULL");
-  console.log("[INVENTORY] auth.schema:", auth.schema);
-  console.log("[INVENTORY] auth.role:", auth.role);
   const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState("All");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [categoryFilter, setCategoryFilter] = useState("All Categories");
+  const [catOpen, setCatOpen] = useState(false);
   const [items, setItems] = useState<APIItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchInventory = async (searchVal: string, category: string) => {
+  const fetchInventory = async (q: string) => {
+    if (!auth.token) return;
     setLoading(true);
-    setError(null);
     try {
-      const { loadAuth } = require("../../lib/auth-store");
-      const currentAuth = loadAuth();
-      console.log("[FETCH] loadAuth token:", currentAuth.token ? currentAuth.token.substring(0, 20) : "NULL");
-      console.log("[FETCH] useAuth token:", auth.token ? auth.token.substring(0, 20) : "NULL");
-      if (!currentAuth.token) throw new Error("Not authenticated");
-      const token = currentAuth.token;
       const params: Record<string, string> = {};
-      if (searchVal) params.q = searchVal;
-      if (category !== "All") params.category = category;
-      const data = await getInventory(token, params);
+      if (q) params.q = q;
+      const data = await getInventory(auth.token, params);
       setItems(data);
-    } catch (e: any) {
-      console.log("[INVENTORY ERROR]", e.message, JSON.stringify(e));
-      setError(e.message || "Failed to load inventory");
-    } finally {
-      setLoading(false);
-    }
+    } catch {}
+    finally { setLoading(false); }
   };
 
-  // Initial load — only fetch when token is available
-  useEffect(() => {
-    if (!auth.token) return;
-    fetchInventory("", "All");
-  }, [auth.token]);
+  useEffect(() => { if (auth.token) fetchInventory(""); }, [auth.token]);
 
-  // Category change — immediate
-  useEffect(() => {
-    if (!auth.token) return;
-    fetchInventory(search, activeCategory);
-  }, [activeCategory, auth.token]);
-
-  // Search — debounced 300ms
   const handleSearch = (text: string) => {
     setSearch(text);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      fetchInventory(text, activeCategory);
-    }, 300);
+    debounceRef.current = setTimeout(() => fetchInventory(text), 300);
   };
 
-  const critical = items.filter(i => normalizeStatus(i.status) === "critical");
-  const low = items.filter(i => normalizeStatus(i.status) === "low");
-  const healthy = items.filter(i => normalizeStatus(i.status) === "healthy");
+  const hasCritical = items.some(i => i.status.toLowerCase() === "critical");
+  const hasLow = items.some(i => i.status.toLowerCase() === "low");
+  const hasOut = items.some(i => i.status.toLowerCase().includes("out"));
+
+  const needsDot = (tab: string) => {
+    if (tab === "Critical") return hasCritical;
+    if (tab === "Low") return hasLow;
+    if (tab === "Out of Stock") return hasOut;
+    return false;
+  };
+
+  const filtered = items.filter(item => {
+    const s = item.status.toLowerCase();
+    const matchesStatus =
+      statusFilter === "All" ? true :
+      statusFilter === "Critical" ? s === "critical" :
+      statusFilter === "Low" ? s === "low" :
+      statusFilter === "Out of Stock" ? s.includes("out") : true;
+    const matchesCat = categoryFilter === "All Categories" ? true : item.category === categoryFilter;
+    return matchesStatus && matchesCat;
+  });
 
   return (
-    <SafeAreaView className="flex-1 bg-kosh-bg">
-      <View className="px-5 pt-4 pb-2">
-        <Text className="text-[24px] font-bold text-kosh-textMain mb-4">Inventory</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 40 }}>
 
-        {/* Search */}
-        <View className="bg-white rounded-2xl px-4 py-3 flex-row items-center gap-3 border border-kosh-border mb-4">
-          <Text className="text-lg">🔍</Text>
-          <TextInput
-            placeholder="Search items..."
-            placeholderTextColor="#687076"
-            value={search}
-            onChangeText={handleSearch}
-            className="flex-1 text-kosh-textMain text-[15px]"
-          />
+        {/* Header */}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <Text style={{ fontSize: 36, fontWeight: "800", color: colors.textMain, letterSpacing: -1 }}>Inventory</Text>
+          <MiseLogo size="header" />
         </View>
 
-        {/* Category Pills */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2">
-          <View className="flex-row gap-2 pb-2">
-            {CATEGORIES.map(cat => (
+        {/* Search + Category */}
+        <View style={{ gap: 12, marginBottom: 16 }}>
+          <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
+            <View style={{ flex: 1 }}>
+              <SearchField value={search} onChange={handleSearch} placeholder="Search inventory..." />
+            </View>
+            <TouchableOpacity
+              onPress={() => setCatOpen(!catOpen)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                backgroundColor: colors.card,
+                borderWidth: 1,
+                borderColor: colors.border,
+                paddingHorizontal: 16,
+                height: 48,
+                borderRadius: 20,
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.03,
+                shadowRadius: 20,
+                elevation: 1,
+              }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: "800", color: colors.textMain }}>
+                {categoryFilter === "All Categories" ? "Category" : categoryFilter}
+              </Text>
+              <ChevronDown size={16} color={colors.textMain} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Category dropdown */}
+          {catOpen && (
+            <View style={{
+              backgroundColor: colors.card,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: colors.border,
+              overflow: "hidden",
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.08,
+              shadowRadius: 24,
+              elevation: 8,
+            }}>
+              {CATEGORIES.map(c => (
+                <TouchableOpacity
+                  key={c}
+                  onPress={() => { setCategoryFilter(c); setCatOpen(false); }}
+                  style={{ paddingHorizontal: 20, paddingVertical: 14, backgroundColor: categoryFilter === c ? "#F4F5F7" : "transparent" }}
+                >
+                  <Text style={{ fontSize: 14, fontWeight: categoryFilter === c ? "800" : "600", color: categoryFilter === c ? colors.textMain : colors.textMuted }}>{c}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Status filter pills */}
+          <View style={{
+            flexDirection: "row",
+            backgroundColor: colors.card,
+            padding: 4,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: colors.border,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.03,
+            shadowRadius: 20,
+            elevation: 1,
+          }}>
+            {STATUS_FILTERS.map(tab => (
               <TouchableOpacity
-                key={cat}
-                onPress={() => setActiveCategory(cat)}
-                className={`px-4 py-2 rounded-full border ${activeCategory === cat ? "bg-kosh-primary border-kosh-primary" : "bg-white border-kosh-border"}`}
+                key={tab}
+                onPress={() => setStatusFilter(tab)}
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  paddingVertical: 10,
+                  borderRadius: 16,
+                  backgroundColor: statusFilter === tab ? colors.textMain : "transparent",
+                }}
               >
-                <Text className={`text-[13px] font-semibold ${activeCategory === cat ? "text-white" : "text-kosh-textMuted"}`}>
-                  {cat}
-                </Text>
+                <View style={{ position: "relative" }}>
+                  <Text style={{
+                    fontSize: 12,
+                    fontWeight: "800",
+                    color: statusFilter === tab ? "white" : colors.textMuted,
+                  }}>{tab}</Text>
+                  {needsDot(tab) && (
+                    <View style={{
+                      position: "absolute",
+                      top: -2,
+                      right: -8,
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: "#EF4444",
+                    }} />
+                  )}
+                </View>
               </TouchableOpacity>
             ))}
           </View>
-        </ScrollView>
-      </View>
+        </View>
 
-      {loading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#1B4D36" />
-        </View>
-      ) : error ? (
-        <View className="flex-1 items-center justify-center px-6">
-          <Text className="text-red-500 text-center font-medium">{error}</Text>
-        </View>
-      ) : items.length === 0 ? (
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-kosh-textMuted text-[15px]">No items found</Text>
-        </View>
-      ) : (
-        <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false}>
-          {critical.length > 0 && <Section title={`Critical (${critical.length})`} items={critical} color="#EF4444" />}
-          {low.length > 0 && <Section title={`Low (${low.length})`} items={low} color="#EAB308" />}
-          {healthy.length > 0 && <Section title={`Healthy (${healthy.length})`} items={healthy} color="#22C55E" />}
-          <View style={{ height: 32 }} />
-        </ScrollView>
-      )}
+        {/* Items list */}
+        {loading ? (
+          <View style={{ paddingTop: 80, alignItems: "center" }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : filtered.length === 0 ? (
+          <View style={{
+            paddingVertical: 64,
+            alignItems: "center",
+            backgroundColor: colors.card,
+            borderRadius: 32,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginTop: 8,
+          }}>
+            <View style={{
+              width: 64,
+              height: 64,
+              backgroundColor: "#F4F5F7",
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: colors.border,
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 16,
+            }}>
+              <Package size={32} color={colors.textMuted} strokeWidth={2} />
+            </View>
+            <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, marginBottom: 8, letterSpacing: -0.3 }}>No ingredients match.</Text>
+            <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center", maxWidth: 220 }}>Try adjusting your filters or search term.</Text>
+          </View>
+        ) : (
+          <View style={{ gap: 12, marginTop: 8 }}>
+            {filtered.map(item => (
+              <TouchableOpacity
+                key={item.id}
+                onPress={() => router.push({ pathname: "/(app)/item-detail", params: { itemJson: JSON.stringify(item) } })}
+                activeOpacity={0.95}
+                style={{
+                  backgroundColor: colors.card,
+                  borderRadius: 24,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  padding: 20,
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.03,
+                  shadowRadius: 20,
+                  elevation: 2,
+                }}
+              >
+                {/* Top row */}
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 16, flex: 1, minWidth: 0 }}>
+                    <View style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: 18,
+                      backgroundColor: "#F4F5F7",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}>
+                      <Package size={24} color={colors.textMuted} strokeWidth={2} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3, marginBottom: 4 }} numberOfLines={1}>{item.name}</Text>
+                      <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 }} numberOfLines={1}>{item.category || "General"}</Text>
+                    </View>
+                  </View>
+                  <StatusBadge status={item.status} />
+                </View>
+
+                {/* Bottom row */}
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <View>
+                    <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Current Stock</Text>
+                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                      <Text style={{ fontSize: 22, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>{parseFloat(item.quantity.toFixed(2))}</Text>
+                      <Text style={{ fontSize: 15, fontWeight: "600", color: colors.textMuted }}>{item.unit}</Text>
+                    </View>
+                  </View>
+                  <ChevronRight size={20} color={colors.textMuted} strokeWidth={2} />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
