@@ -14,6 +14,7 @@ passlib[bcrypt]==1.7.4
 # ── Database (async) ────────────────────────────────────────────────────────
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0                    # PostgreSQL async driver
+psycopg2-binary==2.9.9             # PostgreSQL sync driver (for autocommit DDL)
 alembic==1.14.0                    # DB migrations
 
 # ── Caching / OTP storage ───────────────────────────────────────────────────
