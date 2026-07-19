@@ -28,7 +28,7 @@ export default function ScanInvoiceScreen() {
     <SafeAreaView className="flex-1 bg-kosh-bg">
       <View className="px-5 pt-4">
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.navigate("/(app)/more")}
           className="w-10 h-10 -ml-2 rounded-full items-center justify-center mb-4"
         >
           <Text className="text-[28px] text-kosh-textMain">‹</Text>
@@ -127,7 +127,7 @@ export default function ScanInvoiceScreen() {
             {items.length} items have been recorded and inventory updated.
           </Text>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => router.navigate("/(app)/more")}
             className="w-full bg-kosh-primary py-[18px] rounded-full items-center"
             activeOpacity={0.85}
           >

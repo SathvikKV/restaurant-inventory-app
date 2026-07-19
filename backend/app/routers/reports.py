@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.database import get_db
@@ -43,25 +43,51 @@ async def food_cost_trend(
     ]
 
 
-@router.get("/top-items", summary="Top items by issue volume")
-async def top_items_by_usage(
-    limit: int = Query(5, ge=1, le=20),
+@router.get("/top-items")
+async def top_items(
+    limit: int = 5,
     user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db)
 ):
-    """Returns top N items by total wastage quantity as a proxy for usage."""
-    schema = require_schema(user)
+    schema = user.get("schema")
+    if not schema:
+        raise HTTPException(status_code=400, detail="No schema")
+    
     models = get_tenant_models(schema)
     WastageEntry = models["wastage"]
-
-    result = await db.execute(
-        select(WastageEntry.item, func.sum(WastageEntry.qty).label("total_qty"))
+    InventoryItem = models["inventory"]
+    
+    # Get top wasted items by quantity
+    stmt = (
+        select(
+            WastageEntry.item.label("item_id"),
+            func.sum(WastageEntry.qty).label("total_qty")
+        )
         .group_by(WastageEntry.item)
         .order_by(func.sum(WastageEntry.qty).desc())
         .limit(limit)
     )
-    rows = result.fetchall()
-    return [{"item": row.item, "total_qty": row.total_qty} for row in rows]
+    
+    result = await db.execute(stmt)
+    rows = result.all()
+    
+    # Look up item names
+    output = []
+    for row in rows:
+        item_name = row.item_id  # fallback to ID
+        try:
+            import uuid as _uuid
+            inv_item = await db.get(InventoryItem, _uuid.UUID(str(row.item_id)))
+            if inv_item:
+                item_name = inv_item.item
+        except Exception:
+            pass
+        output.append({
+            "item": item_name,
+            "total_qty": float(row.total_qty or 0)
+        })
+    
+    return output
 
 
 @router.get("/wastage-summary", summary="Wastage summary for a period")

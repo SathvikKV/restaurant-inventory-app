@@ -2,10 +2,11 @@ import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { loadAuth } from "../../lib/auth-store";
+import { useAuth } from "../../lib/auth-context";
 import { adjustStock } from "../../lib/api";
 
 export default function AdjustStockScreen() {
+  const { auth } = useAuth();
   const { id, itemName, unit, currentQty } = useLocalSearchParams<{ id: string; itemName: string; unit: string; currentQty: string }>();
   const [qty, setQty] = useState(currentQty || "");
   const [reason, setReason] = useState("");
@@ -15,7 +16,6 @@ export default function AdjustStockScreen() {
     if (!qty || !reason) return;
     setLoading(true);
     try {
-      const auth = await loadAuth();
       if (!auth.token) throw new Error("Not authenticated");
       await adjustStock(auth.token, id, parseFloat(qty), reason);
       Alert.alert("Success", "Stock adjusted", [{ text: "OK", onPress: () => router.back() }]);

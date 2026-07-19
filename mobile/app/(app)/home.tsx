@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { loadAuth } from "../../lib/auth-store";
+import { useAuth } from "../../lib/auth-context";
 import { getInventoryHealth, getAIRecommendations, getInventory } from "../../lib/api";
 
 type HealthData = { score: number; label: string; critical: number; low: number; healthy: number; total: number };
 type Recommendation = { id: string; title: string; reason: string; item: string; current_qty: number; unit: string };
-type InventoryItem = { id: string; item: string; unit: string; current_qty: number; reorder_threshold: number; category: string | null; status: string };
+type InventoryItem = { id: string; name: string; unit: string; quantity: number; category: string | null; status: string };
 
 function getStatusColor(status: string): string {
   const s = status.toLowerCase();
@@ -87,9 +87,9 @@ function OwnerHome({ health, recs, urgentItems }: { health: HealthData; recs: Re
                   <Text className="text-xl">⚠️</Text>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-[14px] font-semibold text-kosh-textMain">{item.item}</Text>
+                  <Text className="text-[14px] font-semibold text-kosh-textMain">{item.name}</Text>
                   <Text className="text-[12px] text-kosh-textMuted">
-                    {item.current_qty === 0 ? "Currently out of stock" : `Only ${item.current_qty} ${item.unit} remaining`}
+                    {item.quantity === 0 ? "Currently out of stock" : `Only ${parseFloat(item.quantity.toFixed(2))} ${item.unit} remaining`}
                   </Text>
                 </View>
                 <Text className="text-kosh-textMuted">›</Text>
@@ -182,6 +182,7 @@ function ManagerHome({ health }: { health: HealthData }) {
 }
 
 export default function HomeScreen() {
+  const { auth } = useAuth();
   const [role, setRole] = useState<"owner" | "manager">("owner");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -194,7 +195,6 @@ export default function HomeScreen() {
       setLoading(true);
       setError(null);
       try {
-        const auth = await loadAuth();
         if (!auth.token) throw new Error("Not authenticated");
         const [healthData, recsData, inventoryData] = await Promise.allSettled([
           getInventoryHealth(auth.token),
@@ -212,7 +212,7 @@ export default function HomeScreen() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [auth.token]);
 
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { loadAuth, clearAuth } from "../../lib/auth-store";
+import { useAuth } from "../../lib/auth-context";
 import { getMe } from "../../lib/api";
 
 const MENU_SECTIONS = [
@@ -33,23 +33,26 @@ const MENU_SECTIONS = [
 ];
 
 export default function MoreScreen() {
+  const { auth, clearAuth } = useAuth();
   const [profile, setProfile] = useState<{ name: string; phone: string; role: string } | null>(null);
   const [restaurantName, setRestaurantName] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const auth = await loadAuth();
         if (!auth.token) return;
         setRestaurantName(auth.restaurantName);
         const me = await getMe(auth.token);
+        console.log("[MORE] getMe result:", JSON.stringify(me));
         setProfile({ name: me.name, phone: me.phone, role: me.role });
-      } catch {}
+      } catch (e: any) {
+        console.log("[MORE] getMe error:", e.message);
+      }
     })();
-  }, []);
+  }, [auth.token]);
 
   async function handleLogout() {
-    await clearAuth();
+    clearAuth();
     router.replace("/onboarding/welcome");
   }
 

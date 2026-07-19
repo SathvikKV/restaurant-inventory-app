@@ -3,9 +3,10 @@ import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createRestaurant, selectRestaurant } from "../../lib/api";
-import { loadAuth, saveAuth } from "../../lib/auth-store";
+import { saveAuth, loadAuth } from "../../lib/auth-store";
 
 export default function CreateRestaurantScreen() {
+
   const [name, setName] = useState("Minerva Coffee Shop");
   const [city, setCity] = useState("Hyderabad");
   const [loading, setLoading] = useState(false);
@@ -13,11 +14,11 @@ export default function CreateRestaurantScreen() {
   async function handleCreate() {
     setLoading(true);
     try {
-      const auth = await loadAuth();
+      const auth = loadAuth();
       if (!auth.token) throw new Error("Not authenticated");
       const restaurant = await createRestaurant(auth.token, name, city);
       const selected = await selectRestaurant(auth.token, restaurant.id);
-      await saveAuth({
+      saveAuth({
         ...auth,
         token: selected.access_token,
         tenantId: restaurant.id,

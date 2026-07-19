@@ -4,10 +4,10 @@ import { router, useLocalSearchParams } from "expo-router";
 
 type APIItem = {
   id: string;
-  item: string;
+  name: string;
   unit: string;
-  current_qty: number;
-  reorder_threshold: number;
+  quantity: number;
+  suggested_purchase?: number;
   category: string | null;
   status: string;
 };
@@ -51,25 +51,25 @@ export default function ItemDetailScreen() {
       icon: "📥",
       label: "Receive Stock",
       route: "/(app)/receive-stock",
-      params: { id: item.id, itemName: item.item, unit: item.unit, currentQty: String(item.current_qty) },
+      params: { id: item.id, itemName: item.name, unit: item.unit, currentQty: String(item.quantity) },
     },
     {
       icon: "📤",
       label: "Issue Stock",
       route: "/(app)/issue-stock",
-      params: { id: item.id, itemName: item.item, unit: item.unit, currentQty: String(item.current_qty) },
+      params: { id: item.id, itemName: item.name, unit: item.unit, currentQty: String(item.quantity) },
     },
     {
       icon: "✏️",
       label: "Adjust Stock",
       route: "/(app)/adjust-stock",
-      params: { id: item.id, itemName: item.item, unit: item.unit, currentQty: String(item.current_qty) },
+      params: { id: item.id, itemName: item.name, unit: item.unit, currentQty: String(item.quantity) },
     },
     {
       icon: "🗑️",
       label: "Log Wastage",
       route: "/(app)/log-wastage",
-      params: { id: item.id, itemName: item.item, unit: item.unit },
+      params: { id: item.id, itemName: item.name, unit: item.unit },
     },
   ];
 
@@ -93,7 +93,7 @@ export default function ItemDetailScreen() {
                 <Text className="text-4xl">📦</Text>
               </View>
               <View className="flex-1">
-                <Text className="text-[22px] font-bold text-kosh-textMain">{item.item}</Text>
+                <Text className="text-[22px] font-bold text-kosh-textMain">{item.name}</Text>
                 <Text className="text-[14px] text-kosh-textMuted">{item.category || "General"}</Text>
               </View>
             </View>
@@ -101,12 +101,12 @@ export default function ItemDetailScreen() {
             <View className="flex-row gap-3">
               <View className="flex-1 bg-kosh-bg rounded-2xl p-3">
                 <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Current Stock</Text>
-                <Text className="text-kosh-textMain text-[22px] font-bold">{item.current_qty}</Text>
+                <Text className="text-kosh-textMain text-[22px] font-bold">{item.quantity}</Text>
                 <Text className="text-kosh-textMuted text-[12px]">{item.unit}</Text>
               </View>
               <View className="flex-1 bg-kosh-bg rounded-2xl p-3">
-                <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Reorder At</Text>
-                <Text className="text-kosh-textMain text-[22px] font-bold">{item.reorder_threshold}</Text>
+                <Text className="text-kosh-textMuted text-[12px] font-medium mb-1">Suggested Buy</Text>
+                <Text className="text-kosh-textMain text-[22px] font-bold">{item.suggested_purchase ?? 0}</Text>
                 <Text className="text-kosh-textMuted text-[12px]">{item.unit}</Text>
               </View>
               <View className="flex-1 bg-kosh-bg rounded-2xl p-3">

@@ -23,7 +23,7 @@ export default function NotificationsScreen() {
     <SafeAreaView className="flex-1 bg-kosh-bg">
       <View className="px-5 pt-4 pb-2">
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.navigate("/(app)/more")}
           className="w-10 h-10 -ml-2 rounded-full items-center justify-center mb-4"
         >
           <Text className="text-[28px] text-kosh-textMain">‹</Text>

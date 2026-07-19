@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { loadAuth } from "../../lib/auth-store";
+import { useAuth } from "../../lib/auth-context";
 import {
   getInventoryHealth,
   getWastageSummary,
@@ -15,6 +15,7 @@ type Period = "7D" | "30D" | "90D";
 const PERIOD_DAYS: Record<Period, number> = { "7D": 7, "30D": 30, "90D": 90 };
 
 export default function AnalyticsScreen() {
+  const { auth } = useAuth();
   const [period, setPeriod] = useState<Period>("7D");
   const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<any>(null);
@@ -27,7 +28,6 @@ export default function AnalyticsScreen() {
     (async () => {
       setLoading(true);
       try {
-        const auth = await loadAuth();
         if (!auth.token) return;
         const days = PERIOD_DAYS[period];
         const [healthRes, costRes, topRes, wastageRes, purchasesRes] = await Promise.allSettled([
@@ -39,7 +39,10 @@ export default function AnalyticsScreen() {
         ]);
         if (healthRes.status === "fulfilled") setHealth(healthRes.value);
         if (costRes.status === "fulfilled") setCostTrend(Array.isArray(costRes.value) ? costRes.value : []);
-        if (topRes.status === "fulfilled") setTopItems(Array.isArray(topRes.value) ? topRes.value : []);
+        if (topRes.status === "fulfilled") {
+          console.log("[TOP ITEMS]", JSON.stringify(topRes.value));
+          setTopItems(Array.isArray(topRes.value) ? topRes.value : []);
+        }
         if (wastageRes.status === "fulfilled") {
           const w = wastageRes.value;
           setWastage(Array.isArray(w) ? w : Array.isArray(w?.items) ? w.items : []);
@@ -52,10 +55,10 @@ export default function AnalyticsScreen() {
         setLoading(false);
       }
     })();
-  }, [period]);
+  }, [period, auth.token]);
 
   const maxCost = costTrend.length > 0 ? Math.max(...costTrend.map((d: any) => d.value ?? d.total ?? 0)) : 1;
-  const maxQty = topItems.length > 0 ? Math.max(...topItems.map((i: any) => i.qty ?? i.quantity ?? 0)) : 1;
+  const maxQty = topItems.length > 0 ? Math.max(...topItems.map((i: any) => i.total_issued ?? i.total_qty ?? i.quantity ?? i.qty ?? 0)) : 1;
 
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">
@@ -139,11 +142,11 @@ export default function AnalyticsScreen() {
                   <Text className="text-[15px] font-bold text-kosh-textMain mb-4">Top Items by Usage</Text>
                   <View className="gap-3">
                     {topItems.map((item: any, idx: number) => {
-                      const q = item.qty ?? item.quantity ?? 0;
+                      const q = item.total_issued ?? item.total_qty ?? item.quantity ?? item.qty ?? 0;
                       return (
                         <View key={idx}>
                           <View className="flex-row justify-between mb-1">
-                            <Text className="text-[13px] font-medium text-kosh-textMain">{item.item ?? item.name}</Text>
+                            <Text className="text-[13px] font-medium text-kosh-textMain">{item.item_name ?? item.item ?? item.name ?? String(item.id).substring(0, 8)}</Text>
                             <Text className="text-[13px] font-bold text-kosh-textMuted">{q} {item.unit}</Text>
                           </View>
                           <View className="h-2 bg-kosh-bg rounded-full overflow-hidden">

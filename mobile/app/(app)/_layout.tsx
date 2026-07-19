@@ -1,6 +1,8 @@
-import { Tabs } from "expo-router";
-import { Text } from "react-native";
+import { useEffect } from "react";
+import { Tabs, router } from "expo-router";
+import { Text, View, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuthStore } from "../../lib/auth-store";
 
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
   const icons: Record<string, string> = {
@@ -18,6 +20,21 @@ function TabIcon({ name, focused }: { name: string; focused: boolean }) {
 
 export default function AppLayout() {
   const insets = useSafeAreaInsets();
+  const auth = useAuthStore();
+
+  useEffect(() => {
+    if (!auth.token) {
+      router.replace("/onboarding/welcome");
+    }
+  }, [auth.token]);
+
+  if (!auth.token) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#F4F5F7" }}>
+        <ActivityIndicator size="large" color="#1B4D36" />
+      </View>
+    );
+  }
 
   return (
     <Tabs

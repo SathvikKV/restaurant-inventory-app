@@ -2,12 +2,13 @@ import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { loadAuth } from "../../lib/auth-store";
+import { useAuth } from "../../lib/auth-context";
 import { issueStock } from "../../lib/api";
 
 const DESTINATIONS = ["Kitchen", "Bar", "Bakery", "Pantry", "Events"];
 
 export default function IssueStockScreen() {
+  const { auth } = useAuth();
   const { id, itemName, unit, currentQty } = useLocalSearchParams<{ id: string; itemName: string; unit: string; currentQty: string }>();
   const [qty, setQty] = useState("");
   const [destination, setDestination] = useState("Kitchen");
@@ -17,7 +18,6 @@ export default function IssueStockScreen() {
     if (!qty) return;
     setLoading(true);
     try {
-      const auth = await loadAuth();
       if (!auth.token) throw new Error("Not authenticated");
       await issueStock(auth.token, id, parseFloat(qty), destination);
       Alert.alert("Success", "Stock issued", [{ text: "OK", onPress: () => router.back() }]);

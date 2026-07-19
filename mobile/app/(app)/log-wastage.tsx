@@ -2,12 +2,13 @@ import { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { loadAuth } from "../../lib/auth-store";
+import { useAuth } from "../../lib/auth-context";
 import { logWastage } from "../../lib/api";
 
 const REASONS = ["Spoiled", "Expired", "Overcooked", "Damaged", "Spillage", "Other"];
 
 export default function LogWastageScreen() {
+  const { auth } = useAuth();
   const { id, itemName, unit } = useLocalSearchParams<{ id: string; itemName: string; unit: string }>();
   const [qty, setQty] = useState("");
   const [reason, setReason] = useState("Spoiled");
@@ -18,7 +19,6 @@ export default function LogWastageScreen() {
     if (!qty) return;
     setLoading(true);
     try {
-      const auth = await loadAuth();
       if (!auth.token) throw new Error("Not authenticated");
       await logWastage(auth.token, itemName, parseFloat(qty), unit, reason);
       Alert.alert("Success", "Wastage logged", [{ text: "OK", onPress: () => router.back() }]);

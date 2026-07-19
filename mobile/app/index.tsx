@@ -4,6 +4,14 @@ import { router } from "expo-router";
 
 export default function SplashScreen() {
   useEffect(() => {
+    // Clear any stale auth state on app start
+    const { clearAuth, loadAuth } = require("../lib/auth-store");
+    const auth = loadAuth();
+    if (auth.token) {
+      // Verify token is still valid by checking if it exists
+      // For now clear on every restart to avoid stale tokens
+      clearAuth();
+    }
     const timer = setTimeout(() => {
       router.replace("/onboarding/welcome");
     }, 2000);

@@ -2,10 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { verifyOTP } from "../../lib/api";
+import { verifyOTP, listRestaurants, selectRestaurant } from "../../lib/api";
 import { saveAuth } from "../../lib/auth-store";
 
 export default function OtpScreen() {
+
   const { phone, mockOtp } = useLocalSearchParams<{ phone: string; mockOtp: string }>();
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
@@ -34,18 +35,43 @@ export default function OtpScreen() {
     setLoading(true);
     try {
       const result = await verifyOTP(phone, code);
-      await saveAuth({
-        token: result.access_token,
-        userId: result.user_id,
-        role: result.role,
-        tenantId: result.tenant_id,
-        schema: result.schema,
-        restaurantName: null,
-        needsRestaurantSelection: result.needs_restaurant_selection,
-      });
+
       if (result.needs_restaurant_selection) {
+        // New user — save base token and go create restaurant
+        saveAuth({
+          token: result.access_token,
+          userId: result.user_id,
+          role: result.role,
+          tenantId: result.tenant_id,
+          schema: result.schema,
+          restaurantName: null,
+          needsRestaurantSelection: true,
+        });
         router.push("/onboarding/create-restaurant");
       } else {
+        // Existing user — must get scoped token by selecting their restaurant
+        const baseToken = result.access_token;
+
+        // Get list of restaurants
+        const restaurants = await listRestaurants(baseToken);
+        if (!restaurants || restaurants.length === 0) {
+          throw new Error("No restaurant found for this account");
+        }
+
+        // Select the first restaurant to get scoped token
+        const selected = await selectRestaurant(baseToken, restaurants[0].id);
+
+        console.log("[FULL SCOPED TOKEN]", selected.access_token);
+        saveAuth({
+          token: selected.access_token,
+          userId: result.user_id,
+          role: result.role,
+          tenantId: restaurants[0].id,
+          schema: selected.schema,
+          restaurantName: selected.restaurant_name,
+          needsRestaurantSelection: false,
+        });
+
         router.replace("/(app)/home");
       }
     } catch (e: any) {

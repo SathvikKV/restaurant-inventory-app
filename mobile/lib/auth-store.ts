@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useState, useEffect } from "react";
 
 export type AuthState = {
   token: string | null;
@@ -20,20 +20,43 @@ const DEFAULT_STATE: AuthState = {
   needsRestaurantSelection: false,
 };
 
-const AUTH_KEY = "kosh_auth";
+// Module-level singleton — lives for the entire app session
+let _state: AuthState = { ...DEFAULT_STATE };
+const _subscribers: Set<() => void> = new Set();
 
-export async function saveAuth(state: AuthState): Promise<void> {
-  await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(state));
+function notify() {
+  _subscribers.forEach(fn => fn());
 }
 
-export async function loadAuth(): Promise<AuthState> {
-  try {
-    const raw = await AsyncStorage.getItem(AUTH_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return DEFAULT_STATE;
+export function saveAuth(state: AuthState): void {
+  _state = { ...state };
+  notify();
 }
 
-export async function clearAuth(): Promise<void> {
-  await AsyncStorage.removeItem(AUTH_KEY);
+export function loadAuth(): AuthState {
+  return { ..._state };
+}
+
+export function clearAuth(): void {
+  _state = { ...DEFAULT_STATE };
+  notify();
+}
+
+// React hook that subscribes to auth state changes
+export function useAuthStore(): AuthState {
+  const [state, setState] = useState<AuthState>({ ..._state });
+
+  useEffect(() => {
+    // Sync with current state on mount
+    setState({ ..._state });
+
+    // Subscribe to future changes
+    const update = () => setState({ ..._state });
+    _subscribers.add(update);
+    return () => {
+      _subscribers.delete(update);
+    };
+  }, []);
+
+  return state;
 }

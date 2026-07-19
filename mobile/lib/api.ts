@@ -7,6 +7,7 @@ async function request<T>(
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "User-Agent": "KoshApp/1.0",
     ...(options.headers as Record<string, string>),
   };
   if (token) {
@@ -15,6 +16,8 @@ async function request<T>(
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: "Unknown error" }));
+    console.log("[API ERROR]", res.status, res.url, JSON.stringify(error));
+    console.log("[API FULL HEADER]", `Bearer ${token}`);
     throw new Error(error.detail || `HTTP ${res.status}`);
   }
   return res.json();
@@ -102,7 +105,7 @@ export async function getInventory(
     category: string | null;
     last_updated: string | null;
     status: string;
-  }[]>(`/inventory${qs}`, { method: "GET" }, token);
+  }[]>(`/inventory/${qs}`, { method: "GET" }, token);
 }
 
 export async function receiveStock(token: string, itemId: string, quantity: number, notes?: string) {
@@ -152,7 +155,7 @@ export async function getAIRecommendations(token: string) {
 }
 
 export async function getPurchaseOrders(token: string) {
-  return request<any[]>("/purchase-orders", { method: "GET" }, token);
+  return request<any[]>("/purchase-orders/", { method: "GET" }, token);
 }
 
 export async function getAuditLog(token: string, limit = 50) {

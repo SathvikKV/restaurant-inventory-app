@@ -2,17 +2,16 @@ import { useState, useEffect, useRef } from "react";
 import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { loadAuth } from "../../lib/auth-store";
+import { useAuth } from "../../lib/auth-context";
 import { getInventory } from "../../lib/api";
 
 const CATEGORIES = ["All", "Produce", "Meat", "Dairy", "Dry Goods", "Spices", "Beverages"];
 
 type APIItem = {
   id: string;
-  item: string;
+  name: string;
   unit: string;
-  current_qty: number;
-  reorder_threshold: number;
+  quantity: number;
   category: string | null;
   status: string;
 };
@@ -57,12 +56,12 @@ function Section({ title, items, color }: { title: string; items: APIItem[]; col
               <Text className="text-xl">📦</Text>
             </View>
             <View className="flex-1">
-              <Text className="text-[14px] font-semibold text-kosh-textMain">{item.item}</Text>
+              <Text className="text-[14px] font-semibold text-kosh-textMain">{item.name}</Text>
               <Text className="text-[12px] text-kosh-textMuted">{item.category || "General"}</Text>
             </View>
             <View className="items-end">
               <Text className="text-[14px] font-bold text-kosh-textMain">
-                {item.current_qty} {item.unit}
+                {parseFloat(item.quantity.toFixed(2))} {item.unit}
               </Text>
               <View className="flex-row items-center gap-1" style={{ marginTop: 2 }}>
                 <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getStatusColor(item.status) }} />
@@ -79,6 +78,10 @@ function Section({ title, items, color }: { title: string; items: APIItem[]; col
 }
 
 export default function InventoryScreen() {
+  const { auth } = useAuth();
+  console.log("[INVENTORY] auth.token:", auth.token ? auth.token.substring(0, 20) + "..." : "NULL");
+  console.log("[INVENTORY] auth.schema:", auth.schema);
+  console.log("[INVENTORY] auth.role:", auth.role);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [items, setItems] = useState<APIItem[]>([]);
@@ -90,29 +93,36 @@ export default function InventoryScreen() {
     setLoading(true);
     setError(null);
     try {
-      const auth = await loadAuth();
-      if (!auth.token) throw new Error("Not authenticated");
+      const { loadAuth } = require("../../lib/auth-store");
+      const currentAuth = loadAuth();
+      console.log("[FETCH] loadAuth token:", currentAuth.token ? currentAuth.token.substring(0, 20) : "NULL");
+      console.log("[FETCH] useAuth token:", auth.token ? auth.token.substring(0, 20) : "NULL");
+      if (!currentAuth.token) throw new Error("Not authenticated");
+      const token = currentAuth.token;
       const params: Record<string, string> = {};
-      if (searchVal) params.search = searchVal;
+      if (searchVal) params.q = searchVal;
       if (category !== "All") params.category = category;
-      const data = await getInventory(auth.token, params);
+      const data = await getInventory(token, params);
       setItems(data);
     } catch (e: any) {
+      console.log("[INVENTORY ERROR]", e.message, JSON.stringify(e));
       setError(e.message || "Failed to load inventory");
     } finally {
       setLoading(false);
     }
   };
 
-  // Initial load
+  // Initial load — only fetch when token is available
   useEffect(() => {
+    if (!auth.token) return;
     fetchInventory("", "All");
-  }, []);
+  }, [auth.token]);
 
   // Category change — immediate
   useEffect(() => {
+    if (!auth.token) return;
     fetchInventory(search, activeCategory);
-  }, [activeCategory]);
+  }, [activeCategory, auth.token]);
 
   // Search — debounced 300ms
   const handleSearch = (text: string) => {

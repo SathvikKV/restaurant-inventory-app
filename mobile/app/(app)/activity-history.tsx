@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { loadAuth } from "../../lib/auth-store";
+import { useAuth } from "../../lib/auth-context";
 import { getAuditLog } from "../../lib/api";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -37,6 +37,7 @@ function formatTime(iso: string): string {
 }
 
 export default function ActivityHistoryScreen() {
+  const { auth } = useAuth();
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +47,6 @@ export default function ActivityHistoryScreen() {
       setLoading(true);
       setError(null);
       try {
-        const auth = await loadAuth();
         if (!auth.token) throw new Error("Not authenticated");
         const data = await getAuditLog(auth.token, 50);
         const list = Array.isArray(data) ? data : (data?.entries ?? []);
@@ -57,13 +57,13 @@ export default function ActivityHistoryScreen() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [auth.token]);
 
   return (
     <SafeAreaView className="flex-1 bg-kosh-bg">
       <View className="px-5 pt-4 pb-2">
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.navigate("/(app)/more")}
           className="w-10 h-10 -ml-2 rounded-full items-center justify-center mb-4"
         >
           <Text className="text-[28px] text-kosh-textMain">‹</Text>
