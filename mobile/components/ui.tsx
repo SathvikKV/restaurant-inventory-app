@@ -64,7 +64,7 @@ export function Icon({ name, size = 20, color = colors.textMain }: { name: IconN
   return <LucideIcon size={size} color={color} strokeWidth={2} />;
 }
 
-// MISE wordmark logo
+// SANQ wordmark logo
 export function MiseLogo({ size = "header" }: { size?: "hero" | "header" | "small" }) {
   const fontSize = size === "hero" ? 28 : size === "header" ? 16 : 13;
   const dotSize = size === "hero" ? 8 : size === "header" ? 5 : 4;
@@ -76,7 +76,7 @@ export function MiseLogo({ size = "header" }: { size?: "hero" | "header" | "smal
         fontWeight: "800",
         letterSpacing: 4,
         color: colors.primary,
-      }}>MISE</Text>
+      }}>SANQ</Text>
     </View>
   );
 }

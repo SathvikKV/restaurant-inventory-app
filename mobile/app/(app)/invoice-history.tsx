@@ -37,7 +37,7 @@ export default function InvoiceHistoryScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
+        <TouchableOpacity onPress={() => router.navigate("/(app)/more" as any)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
           <ChevronLeft size={24} color={colors.textMain} strokeWidth={2} />
         </TouchableOpacity>
       </View>

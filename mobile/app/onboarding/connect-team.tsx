@@ -26,7 +26,7 @@ export default function ConnectTeamScreen() {
             Connect your team{"\n"}on WhatsApp
           </Text>
           <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center", marginBottom: 32 }}>
-            MISE works where your team works.
+            SANQ works where your team works.
           </Text>
 
           <View style={{ gap: 12 }}>

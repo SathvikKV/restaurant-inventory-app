@@ -52,7 +52,7 @@ export default function CreateRestaurantScreen() {
               Let's set up your{"\n"}restaurant
             </Text>
             <Text style={{ fontSize: 15, color: colors.textMuted, fontWeight: "600", textAlign: "center", lineHeight: 22, marginBottom: 40, maxWidth: 240, alignSelf: "center" }}>
-              This helps MISE personalize your experience.
+              This helps SANQ personalize your experience.
             </Text>
 
             <View style={{ gap: 12 }}>

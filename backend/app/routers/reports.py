@@ -203,14 +203,14 @@ async def audit_log(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Returns recent purchases and wastage entries as an audit trail.
-    Combines both tables ordered by created_at desc.
-    """
+    import uuid as _uuid
+    from app.models.public import User
+
     schema = require_schema(user)
     models = get_tenant_models(schema)
     Purchase = models["purchases"]
     WastageEntry = models["wastage"]
+    InventoryItem = models["inventory"]
 
     purchase_result = await db.execute(
         select(Purchase).order_by(Purchase.created_at.desc()).limit(limit)
@@ -219,23 +219,58 @@ async def audit_log(
         select(WastageEntry).order_by(WastageEntry.created_at.desc()).limit(limit)
     )
 
+    item_cache: dict = {}
+    async def resolve_item_name(raw: str) -> str:
+        if not raw:
+            return "Unknown item"
+        if raw in item_cache:
+            return item_cache[raw]
+        try:
+            uid = _uuid.UUID(str(raw))
+            inv = await db.get(InventoryItem, uid)
+            name = inv.item if inv else raw
+        except (ValueError, AttributeError):
+            name = raw
+        item_cache[raw] = name
+        return name
+
+    user_cache: dict = {}
+    async def resolve_user_name(raw: str) -> str:
+        if not raw:
+            return "Staff"
+        if raw in user_cache:
+            return user_cache[raw]
+        try:
+            uid = _uuid.UUID(str(raw))
+            u = await db.get(User, uid)
+            name = (u.name or u.phone) if u else "Staff"
+        except (ValueError, AttributeError):
+            name = raw if len(raw) < 40 else "Staff"
+        user_cache[raw] = name
+        return name
+
     entries = []
     for p in purchase_result.scalars().all():
+        recorded_by = await resolve_user_name(str(p.recorded_by) if p.recorded_by else "")
         entries.append({
             "type": "purchase",
             "id": str(p.id),
-            "description": f"Purchase from {p.supplier}",
-            "recorded_by": p.recorded_by,
-            "timestamp": p.created_at.isoformat() if p.created_at else "",
+            "description": f"Purchase from {p.supplier or 'supplier'}",
+            "recorded_by": recorded_by,
+            "created_at": p.created_at.isoformat() if p.created_at else "",
         })
+
     for w in wastage_result.scalars().all():
+        item_name = await resolve_item_name(str(w.item) if w.item else "")
+        recorded_by = await resolve_user_name(str(w.recorded_by) if w.recorded_by else "")
+        qty = round(float(w.qty), 2) if w.qty else 0
         entries.append({
             "type": "wastage",
             "id": str(w.id),
-            "description": f"Wastage: {w.item} {w.qty} {w.unit}",
-            "recorded_by": w.recorded_by,
-            "timestamp": w.created_at.isoformat() if w.created_at else "",
+            "description": f"Wastage: {item_name} — {qty} {w.unit}",
+            "recorded_by": recorded_by,
+            "created_at": w.created_at.isoformat() if w.created_at else "",
         })
 
-    entries.sort(key=lambda x: x["timestamp"], reverse=True)
-    return {"entries": entries[offset:offset+limit], "total": len(entries)}
+    entries.sort(key=lambda x: x["created_at"], reverse=True)
+    return {"entries": entries[offset:offset + limit], "total": len(entries)}

@@ -107,11 +107,11 @@ export default function AnalyticsScreen() {
           <MiseLogo size="header" />
         </View>
 
-        {/* MISE Briefing */}
+        {/* SANQ Briefing */}
         <View style={{ backgroundColor: colors.primary, borderRadius: 28, padding: 24 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <Sparkles size={20} color="#A2C384" strokeWidth={2} />
-            <Text style={{ fontSize: 12, fontWeight: "800", color: "#A2C384", letterSpacing: 2, textTransform: "uppercase" }}>MISE Briefing</Text>
+            <Text style={{ fontSize: 12, fontWeight: "800", color: "#A2C384", letterSpacing: 2, textTransform: "uppercase" }}>SANQ Briefing</Text>
           </View>
           <Text style={{ fontSize: 17, fontWeight: "500", color: "white", lineHeight: 26 }}>
             Your food cost ratio improved to <Text style={{ fontWeight: "800", color: "white" }}>28%</Text> this week. Overall sales are tracking <Text style={{ fontWeight: "800", color: "#A2C384" }}>12% higher</Text> compared to last week.

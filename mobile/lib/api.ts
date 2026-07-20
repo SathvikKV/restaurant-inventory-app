@@ -159,7 +159,7 @@ export async function getPurchaseOrders(token: string) {
 }
 
 export async function getAuditLog(token: string, limit = 50) {
-  return request<{ entries: any[]; total: number }>(`/reports/audit-log?limit=${limit}`, { method: "GET" }, token);
+  return request<{ entries: { id: string; type: string; description: string; recorded_by: string; created_at: string }[]; total: number }>(`/reports/audit-log?limit=${limit}`, { method: "GET" }, token);
 }
 
 export async function getWastageSummary(token: string, days = 7) {

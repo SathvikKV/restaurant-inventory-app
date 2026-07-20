@@ -13,9 +13,9 @@ export default function UploadInvoiceScreen() {
             <ChevronLeft size={24} color={colors.textMain} strokeWidth={2} />
           </TouchableOpacity>
 
-          <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, textAlign: "center", letterSpacing: -0.5, marginBottom: 12 }}>Teach MISE</Text>
+          <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, textAlign: "center", letterSpacing: -0.5, marginBottom: 12 }}>Teach SANQ</Text>
           <Text style={{ fontSize: 15, color: colors.textMuted, fontWeight: "600", textAlign: "center", lineHeight: 22, marginBottom: 32, maxWidth: 260, alignSelf: "center" }}>
-            Upload a recent supplier invoice.{"\n"}MISE will learn your inventory,{"\n"}suppliers, units and pricing.
+            Upload a recent supplier invoice.{"\n"}SANQ will learn your inventory,{"\n"}suppliers, units and pricing.
           </Text>
 
           {/* Upload zone */}

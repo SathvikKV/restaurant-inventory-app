@@ -40,7 +40,7 @@ export default function ProcessingScreen() {
         </View>
 
         <Text style={{ fontSize: 26, fontWeight: "800", color: colors.textMain, textAlign: "center", letterSpacing: -0.5, lineHeight: 34, marginBottom: 12 }}>
-          MISE is learning{"\n"}your restaurant
+          SANQ is learning{"\n"}your restaurant
         </Text>
         <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center", marginBottom: 48 }}>
           This usually takes less than a minute.

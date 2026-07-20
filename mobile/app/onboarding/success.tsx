@@ -26,7 +26,7 @@ export default function SuccessScreen() {
 
           <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5, marginBottom: 12 }}>You're all set!</Text>
           <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center", lineHeight: 22, marginBottom: 40, maxWidth: 280 }}>
-            MISE has learned your restaurant and is ready to help you manage inventory, purchases and more.
+            SANQ has learned your restaurant and is ready to help you manage inventory, purchases and more.
           </Text>
 
           <View style={{ width: "100%", gap: 12 }}>

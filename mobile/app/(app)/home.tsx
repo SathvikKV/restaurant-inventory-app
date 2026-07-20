@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Bell, Scan, PenLine, ArrowDownToLine, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react-native";
 import { useAuth } from "../../lib/auth-context";
-import { getInventoryHealth, getInventory, getAuditLog } from "../../lib/api";
+import { getInventoryHealth, getInventory, getAuditLog, getMe } from "../../lib/api";
 import { MiseLogo, colors, Card } from "../../components/ui";
 
 type HealthData = { score: number; critical: number; low: number; healthy: number; total: number };
@@ -17,16 +17,18 @@ export default function HomeScreen() {
   const [health, setHealth] = useState<HealthData>({ score: 0, critical: 0, low: 0, healthy: 0, total: 0 });
   const [urgentItems, setUrgentItems] = useState<InventoryItem[]>([]);
   const [activities, setActivities] = useState<AuditEntry[]>([]);
+  const [userName, setUserName] = useState<string>("");
 
   useEffect(() => {
     if (!auth.token) return;
     (async () => {
       setLoading(true);
       try {
-        const [h, inv, audit] = await Promise.allSettled([
+        const [h, inv, audit, me] = await Promise.allSettled([
           getInventoryHealth(auth.token!),
           getInventory(auth.token!),
           getAuditLog(auth.token!, 4),
+          getMe(auth.token!),
         ]);
         if (h.status === "fulfilled") setHealth(h.value);
         if (inv.status === "fulfilled") {
@@ -36,6 +38,11 @@ export default function HomeScreen() {
           }));
         }
         if (audit.status === "fulfilled") setActivities(audit.value.entries || []);
+        if (me.status === "fulfilled" && me.value?.name) {
+          setUserName(me.value.name.split(" ")[0]);
+        } else {
+          setUserName((auth.restaurantName || "Minerva Coffee Shop").split(" ")[0]);
+        }
       } finally {
         setLoading(false);
       }
@@ -75,7 +82,7 @@ export default function HomeScreen() {
           <View>
             <MiseLogo size="header" />
             <Text style={{ fontSize: 32, fontWeight: "800", letterSpacing: -1, color: colors.textMain, marginTop: 8, marginBottom: 4 }}>
-              Good morning,{"\n"}{restaurantName.split(" ")[0]}
+              Good morning,{"\n"}{userName}
             </Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textMuted }}>{restaurantName}</Text>
