@@ -9,7 +9,7 @@ import { getMe } from "../../lib/api";
 import { MiseLogo, colors } from "../../components/ui";
 
 const MENU_ITEMS = [
-  { icon: ChefHat, label: "Recipes", bg: "#FFF7ED", color: "#EA580C", route: null },
+  { icon: ChefHat, label: "Recipes", bg: "#FFF7ED", color: "#EA580C", route: "/(app)/recipes" },
   { icon: Users, label: "Team Management", bg: "#EFF6FF", color: "#2563EB", badge: "4 Profiles", route: null },
   { icon: FileText, label: "Activity History", bg: "#ECFDF5", color: "#059669", route: "/(app)/activity-history" },
   { icon: Receipt, label: "Invoice History", bg: "#F5F3FF", color: "#7C3AED", route: "/(app)/invoice-history" },

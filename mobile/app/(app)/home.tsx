@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import Svg, { Path } from "react-native-svg";
 import { Bell, Scan, PenLine, ArrowDownToLine, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react-native";
 import { useAuth } from "../../lib/auth-context";
 import { getInventoryHealth, getInventory, getAuditLog, getMe } from "../../lib/api";
@@ -234,10 +235,26 @@ export default function HomeScreen() {
               )}
             </View>
           )}
-          {/* Decorative line */}
-          <View style={{ marginTop: 20, opacity: 0.15 }}>
-            <View style={{ height: 2, backgroundColor: colors.primary, borderRadius: 1, width: "70%" }} />
-            <View style={{ height: 2, backgroundColor: colors.primary, borderRadius: 1, width: "85%", marginTop: 6, opacity: 0.6 }} />
+          {/* Sparkline decoration */}
+          <View style={{ marginTop: 20, height: 40 }}>
+            <Svg width="100%" height="40" viewBox="0 0 300 40" preserveAspectRatio="none">
+              <Path
+                d="M0 30 C30 30 40 10 80 15 C120 20 140 8 180 12 C220 16 250 5 300 8"
+                fill="none"
+                stroke="#1B4D36"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                opacity="0.2"
+              />
+              <Path
+                d="M0 35 C40 35 60 20 100 22 C140 24 160 14 200 18 C240 22 270 12 300 15"
+                fill="none"
+                stroke="#1B4D36"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                opacity="0.1"
+              />
+            </Svg>
           </View>
         </TouchableOpacity>
 

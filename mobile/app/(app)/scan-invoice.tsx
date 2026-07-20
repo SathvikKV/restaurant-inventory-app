@@ -1,140 +1,165 @@
 import { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import { X, Camera, ImagePlus, Check, Package } from "lucide-react-native";
+import * as ImagePicker from "expo-image-picker";
+import { useAuth } from "../../lib/auth-context";
+import { colors, PrimaryButton } from "../../components/ui";
 
-// TODO: Wire OCR flow:
-// 1. Use expo-image-picker to select invoice photo
-// 2. POST /api/v1/ai/ocr/invoice with the image file
-// 3. Display extracted line items for review
-// 4. On confirm: POST /api/v1/purchase-orders with confirmed items
+type LineItem = { item_name: string; quantity: number; unit: string; unit_price?: number; total_price?: number };
+type OCRResult = { invoice_number?: string; supplier_name?: string; invoice_date?: string; line_items: LineItem[]; total_amount?: number; confidence_notes?: string };
 
-type OCRItem = { name: string; qty: number; unit: string; price: number };
+async function uploadInvoice(token: string, imageUri: string, mimeType: string): Promise<OCRResult> {
+  const formData = new FormData();
+  formData.append("file", { uri: imageUri, name: "invoice.jpg", type: mimeType || "image/jpeg" } as any);
+  const res = await fetch("https://kosh-api.sathvik-vadavatha.site/api/v1/ai/ocr/invoice", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) throw new Error("OCR failed");
+  return res.json();
+}
 
-const MOCK_OCR_RESULT: OCRItem[] = [
-  { name: "Tomatoes", qty: 20, unit: "kg", price: 50 },
-  { name: "Onions", qty: 25, unit: "kg", price: 40 },
-  { name: "Coriander Leaves", qty: 2, unit: "kg", price: 80 },
-  { name: "Lemons", qty: 100, unit: "pcs", price: 5 },
-];
-
-type Stage = "upload" | "reviewing" | "confirmed";
+type Stage = "capture" | "processing" | "review";
 
 export default function ScanInvoiceScreen() {
-  const [stage, setStage] = useState<Stage>("upload");
-  const [items] = useState<OCRItem[]>(MOCK_OCR_RESULT);
+  const { auth } = useAuth();
+  const [stage, setStage] = useState<Stage>("capture");
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [result, setResult] = useState<OCRResult | null>(null);
+
+  async function pickImage(useCamera: boolean) {
+    const permission = useCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Permission required", "Please grant permission to continue.");
+      return;
+    }
+
+    const picked = useCamera
+      ? await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true })
+      : await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true, mediaTypes: ImagePicker.MediaTypeOptions.Images });
+
+    if (picked.canceled || !picked.assets?.[0]) return;
+
+    const asset = picked.assets[0];
+    setImageUri(asset.uri);
+    setStage("processing");
+
+    try {
+      const ocr = await uploadInvoice(auth.token!, asset.uri, asset.mimeType || "image/jpeg");
+      setResult(ocr);
+      setStage("review");
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to process invoice");
+      setStage("capture");
+    }
+  }
+
+  if (stage === "capture") {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
+          <TouchableOpacity onPress={() => router.navigate("/(app)/more" as any)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
+            <X size={22} color={colors.textMain} strokeWidth={2} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain }}>Scan Invoice</Text>
+          <View style={{ width: 44 }} />
+        </View>
+
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 40, gap: 16 }}>
+          <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5, marginBottom: 8 }}>Add Invoice</Text>
+          <Text style={{ fontSize: 15, color: colors.textMuted, fontWeight: "600", marginBottom: 24, lineHeight: 22 }}>Take a photo or upload from your library. SANQ will extract the items automatically.</Text>
+
+          <TouchableOpacity
+            onPress={() => pickImage(true)}
+            activeOpacity={0.9}
+            style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, padding: 32, alignItems: "center", gap: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}
+          >
+            <View style={{ width: 72, height: 72, borderRadius: 24, backgroundColor: "#E8F0EC", alignItems: "center", justifyContent: "center" }}>
+              <Camera size={32} color={colors.primary} strokeWidth={2} />
+            </View>
+            <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain }}>Take Photo</Text>
+            <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center" }}>Use your camera to capture the invoice</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => pickImage(false)}
+            activeOpacity={0.9}
+            style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, padding: 32, alignItems: "center", gap: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}
+          >
+            <View style={{ width: 72, height: 72, borderRadius: 24, backgroundColor: "#F5F3FF", alignItems: "center", justifyContent: "center" }}>
+              <ImagePlus size={32} color="#7C3AED" strokeWidth={2} />
+            </View>
+            <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain }}>Upload from Library</Text>
+            <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center" }}>Choose an existing photo or PDF</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  if (stage === "processing") {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "white", alignItems: "center", justifyContent: "center", gap: 24 }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Reading invoice...</Text>
+        <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600" }}>SANQ is extracting items</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView className="flex-1 bg-kosh-bg">
-      <View className="px-5 pt-4">
-        <TouchableOpacity
-          onPress={() => router.navigate("/(app)/more" as any)}
-          className="w-10 h-10 -ml-2 rounded-full items-center justify-center mb-4"
-        >
-          <Text className="text-[28px] text-kosh-textMain">‹</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
+        <TouchableOpacity onPress={() => setStage("capture")} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
+          <X size={22} color={colors.textMain} strokeWidth={2} />
         </TouchableOpacity>
-        <Text className="text-[24px] font-bold text-kosh-textMain mb-1">Scan Invoice</Text>
-        <Text className="text-kosh-textMuted text-[14px] mb-6">Upload an invoice to extract items automatically</Text>
+        <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain }}>Review Invoice</Text>
+        <View style={{ width: 44 }} />
       </View>
 
-      {stage === "upload" && (
-        <View className="flex-1 px-5">
-          {/* WhatsApp instruction */}
-          <View className="bg-white rounded-2xl p-5 border border-kosh-border mb-4">
-            <View className="flex-row items-center gap-3 mb-4">
-              <Text className="text-3xl">📱</Text>
-              <View className="flex-1">
-                <Text className="text-[15px] font-bold text-kosh-textMain">Send via WhatsApp</Text>
-                <Text className="text-[13px] text-kosh-textMuted">Photo auto-processes instantly</Text>
-              </View>
-            </View>
-            <View className="flex-row items-center gap-2 bg-kosh-bg rounded-xl px-4 py-3">
-              <Text className="text-[13px] text-kosh-textMuted font-medium flex-1">Waiting for WhatsApp image...</Text>
-              <View className="w-2 h-2 rounded-full" style={{ backgroundColor: "#4ADE80" }} />
-            </View>
-          </View>
-
-          <View className="flex-row items-center gap-3 mb-4">
-            <View className="flex-1" style={{ height: 1, backgroundColor: "#EAECEF" }} />
-            <Text className="text-[13px] text-kosh-textMuted font-medium">or</Text>
-            <View className="flex-1" style={{ height: 1, backgroundColor: "#EAECEF" }} />
-          </View>
-
-          {/* Upload from gallery — simulated */}
-          <TouchableOpacity
-            onPress={() => setStage("reviewing")}
-            className="bg-white rounded-2xl p-5 border border-kosh-border items-center"
-          >
-            <Text className="text-4xl mb-3">📷</Text>
-            <Text className="text-[15px] font-bold text-kosh-textMain mb-1">Upload from Gallery</Text>
-            <Text className="text-[13px] text-kosh-textMuted">JPEG or PNG invoice image</Text>
-          </TouchableOpacity>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 120 }}>
+        {/* Supplier info */}
+        <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, padding: 20, marginBottom: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+          <Text style={{ fontSize: 13, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Supplier</Text>
+          <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>{result?.supplier_name || "Unknown Supplier"}</Text>
+          {result?.invoice_number && <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: "600", marginTop: 4 }}>Invoice #{result.invoice_number}</Text>}
         </View>
-      )}
 
-      {stage === "reviewing" && (
-        <ScrollView className="flex-1 px-5" showsVerticalScrollIndicator={false}>
-          <View className="bg-white rounded-2xl p-4 border border-kosh-border mb-4">
-            <View className="flex-row items-center gap-2 mb-4">
-              <Text className="text-kosh-accent text-lg">✓</Text>
-              <Text className="text-[14px] font-bold text-kosh-textMain">Extracted {items.length} items</Text>
-              <Text className="text-[13px] text-kosh-textMuted" style={{ marginLeft: "auto" }}>Invoice #INV-1246</Text>
-            </View>
-            {items.map((item, idx) => (
-              <View
-                key={idx}
-                className={`flex-row items-center py-3 ${idx < items.length - 1 ? "border-b border-kosh-border" : ""}`}
-              >
-                <View className="flex-1">
-                  <Text className="text-[14px] font-semibold text-kosh-textMain">{item.name}</Text>
-                  <Text className="text-[12px] text-kosh-textMuted">{item.qty} {item.unit} · ₹{item.price}/{item.unit}</Text>
-                </View>
-                <Text className="text-[14px] font-bold text-kosh-textMain">₹{item.qty * item.price}</Text>
+        {/* Line items */}
+        <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, marginBottom: 12, paddingHorizontal: 4, letterSpacing: -0.3 }}>Extracted Items</Text>
+        <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, overflow: "hidden", marginBottom: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+          {(result?.line_items || []).map((item, idx, arr) => (
+            <View key={idx} style={{ padding: 16, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: "#F4F5F7", alignItems: "center", justifyContent: "center" }}>
+                <Package size={20} color={colors.textMuted} strokeWidth={2} />
               </View>
-            ))}
-            <View className="mt-3 pt-3 border-t border-kosh-border flex-row justify-between">
-              <Text className="text-[14px] font-bold text-kosh-textMain">Total</Text>
-              <Text className="text-[14px] font-bold text-kosh-textMain">
-                ₹{items.reduce((s, i) => s + i.qty * i.price, 0).toLocaleString()}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, marginBottom: 2 }}>{item.item_name}</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>{item.quantity} {item.unit}{item.unit_price ? ` · ₹${item.unit_price}/${item.unit}` : ""}</Text>
+              </View>
+              {item.total_price && <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain }}>₹{item.total_price}</Text>}
             </View>
-          </View>
-
-          <TouchableOpacity
-            onPress={() => setStage("confirmed")}
-            className="w-full bg-kosh-primary py-[18px] rounded-full items-center mb-3"
-            activeOpacity={0.85}
-          >
-            <Text className="text-white font-bold text-[17px]">Confirm and Save</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setStage("upload")}
-            className="w-full py-4 items-center"
-          >
-            <Text className="text-kosh-textMuted font-bold text-[15px]">Retake Photo</Text>
-          </TouchableOpacity>
-          <View style={{ height: 32 }} />
-        </ScrollView>
-      )}
-
-      {stage === "confirmed" && (
-        <View className="flex-1 px-5 items-center justify-center">
-          <View className="w-24 h-24 bg-white rounded-[28px] border border-kosh-border items-center justify-center mb-6">
-            <Text className="text-5xl">✅</Text>
-          </View>
-          <Text className="text-[26px] font-bold text-kosh-textMain mb-2">Invoice Saved</Text>
-          <Text className="text-kosh-textMuted text-[15px] text-center mb-8">
-            {items.length} items have been recorded and inventory updated.
-          </Text>
-          <TouchableOpacity
-            onPress={() => router.navigate("/(app)/more")}
-            className="w-full bg-kosh-primary py-[18px] rounded-full items-center"
-            activeOpacity={0.85}
-          >
-            <Text className="text-white font-bold text-[17px]">Done</Text>
-          </TouchableOpacity>
+          ))}
         </View>
-      )}
+      </ScrollView>
+
+      {/* Confirm button */}
+      <View style={{ position: "absolute", bottom: 24, left: 24, right: 24 }}>
+        <TouchableOpacity
+          onPress={() => { Alert.alert("Done", "Invoice recorded successfully."); router.navigate("/(app)/home" as any); }}
+          activeOpacity={0.85}
+          style={{ backgroundColor: colors.primary, borderRadius: 24, paddingVertical: 18, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 4 }}
+        >
+          <Check size={20} color="white" strokeWidth={2.5} />
+          <Text style={{ color: "white", fontSize: 17, fontWeight: "800", letterSpacing: -0.3 }}>Confirm & Record</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }

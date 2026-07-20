@@ -267,7 +267,7 @@ async def audit_log(
         entries.append({
             "type": "wastage",
             "id": str(w.id),
-            "description": f"Wastage: {item_name} — {qty} {w.unit}",
+            "description": f"Wastage: {item_name} - {qty} {w.unit}",
             "recorded_by": recorded_by,
             "created_at": w.created_at.isoformat() if w.created_at else "",
         })

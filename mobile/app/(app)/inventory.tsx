@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { Package, ChevronDown, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { useAuth } from "../../lib/auth-context";
 import { getInventory } from "../../lib/api";
 import { MiseLogo, SearchField, colors } from "../../components/ui";
+import { CategoryIcon } from "../../components/CategoryIcon";
 
 type APIItem = {
   id: string;
@@ -262,18 +263,7 @@ export default function InventoryScreen() {
                 {/* Top row */}
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 16, flex: 1, minWidth: 0 }}>
-                    <View style={{
-                      width: 56,
-                      height: 56,
-                      borderRadius: 18,
-                      backgroundColor: "#F4F5F7",
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}>
-                      <Package size={24} color={colors.textMuted} strokeWidth={2} />
-                    </View>
+                    <CategoryIcon category={item.category} size={56} />
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3, marginBottom: 4 }} numberOfLines={1}>{item.name}</Text>
                       <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 }} numberOfLines={1}>{item.category || "General"}</Text>
