@@ -5,7 +5,8 @@ import uuid
 from datetime import datetime, timezone, date
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
+from pydantic import BaseModel
 from typing import List, Optional
 
 from app.database import get_db
@@ -202,3 +203,84 @@ async def delete_purchase_order(
         await db.delete(po)
         await db.commit()
     return None
+
+class OCRLineItemIn(BaseModel):
+    item_name: str
+    quantity: float
+    unit: str
+    unit_price: Optional[float] = None
+    total_price: Optional[float] = None
+
+class SaveOCRInvoiceRequest(BaseModel):
+    supplier_name: Optional[str] = None
+    invoice_date: Optional[str] = None
+    line_items: List[OCRLineItemIn]
+    total_amount: Optional[float] = None
+    invoice_s3_key: Optional[str] = None
+
+
+@router.post("/from-ocr", summary="Save an OCR-extracted invoice, update inventory, and sync to Mise")
+async def create_purchase_from_ocr(
+    body: SaveOCRInvoiceRequest,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    schema = user.get("schema")
+    if not schema:
+        raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+    models = get_tenant_models(schema)
+    InventoryItem = models["inventory"]
+    Purchase = models["purchases"]
+
+    from app.models.public import User
+    user_record = await db.get(User, uuid.UUID(user["user_id"]))
+    recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
+    if not recorded_by_name:
+        recorded_by_name = user["user_id"]
+
+    new_items_created = []
+    sync_calls = []
+
+    for line in body.line_items:
+        result = await db.execute(
+            select(InventoryItem).where(func.lower(InventoryItem.item) == line.item_name.strip().lower())
+        )
+        item = result.scalar_one_or_none()
+        if item:
+            item.previous_qty = item.current_qty
+            item.current_qty += line.quantity
+            item.previous_updated = item.last_updated
+            item.last_updated = datetime.now(timezone.utc)
+            resolved_unit = item.unit
+        else:
+            # Simplification for v1: auto-create unmatched items rather than
+            # building a fuzzy-match/confirmation UI right now (mirrors Mise's
+            # own zone-3 auto-create behavior for unmatched names).
+            db.add(InventoryItem(
+                item=line.item_name, unit=line.unit, current_qty=line.quantity,
+                previous_qty=0.0, reorder_threshold=0.0, category="misc",
+                last_updated=datetime.now(timezone.utc),
+            ))
+            new_items_created.append(line.item_name)
+            resolved_unit = line.unit
+        sync_calls.append({"item_name": line.item_name, "quantity": line.quantity, "unit": resolved_unit})
+
+    db.add(Purchase(
+        supplier=body.supplier_name or "Unknown",
+        items=[item.dict() for item in body.line_items],
+        recorded_by=recorded_by_name,
+        s3_key=body.invoice_s3_key,
+        status="active",
+        source="mobile_ocr",
+    ))
+    await db.commit()
+
+    import asyncio
+    from app.services.mise_writeback import push_to_mise
+    for call in sync_calls:
+        asyncio.create_task(push_to_mise(
+            action="receive", item_name=call["item_name"], quantity=call["quantity"],
+            unit=call["unit"], recorded_by=recorded_by_name, supplier=body.supplier_name or "Kosh App"
+        ))
+
+    return {"status": "ok", "new_items_created": new_items_created}
