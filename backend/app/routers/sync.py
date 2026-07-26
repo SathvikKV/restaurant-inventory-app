@@ -27,10 +27,27 @@ class SyncPurchase(BaseModel):
     recorded_by: Optional[str]
     s3_key: Optional[str]
 
+class SyncIssueItem(BaseModel):
+    indent_number: Optional[str] = None
+    outlet: Optional[str] = None
+    section: Optional[str] = None
+    items: dict
+    recorded_by: Optional[str] = None
+    s3_key: Optional[str] = None
+
+class SyncWastageItem(BaseModel):
+    item: str
+    qty: float
+    unit: str
+    reason: Optional[str] = None
+    recorded_by: Optional[str] = None
+
 class SyncPayload(BaseModel):
     schema_name: str
     inventory: List[SyncInventoryItem] = []
     purchases: List[SyncPurchase] = []
+    issues: List[SyncIssueItem] = []
+    wastage: List[SyncWastageItem] = []
 
 def _verify_sync_token(x_sync_token: str = Header(None)):
     """Simple shared-secret auth for Mise → Kosh sync calls."""
@@ -57,6 +74,8 @@ async def ingest_sync(
 
     InventoryItem = models["inventory"]
     Purchase = models["purchases"]
+    Issue = models["issues"]
+    WastageEntry = models["wastage"]
 
     # Upsert inventory items
     for sync_item in payload.inventory:
@@ -70,6 +89,7 @@ async def ingest_sync(
             existing.unit = sync_item.unit
             existing.reorder_threshold = sync_item.reorder_threshold
             existing.last_updated = datetime.now(timezone.utc)
+            existing.sheets_synced_at = datetime.now(timezone.utc)
             if sync_item.category:
                 existing.category = sync_item.category
         else:
@@ -81,6 +101,7 @@ async def ingest_sync(
                 reorder_threshold=sync_item.reorder_threshold,
                 category=sync_item.category,
                 last_updated=datetime.now(timezone.utc),
+                sheets_synced_at=datetime.now(timezone.utc),
             )
             db.add(new_item)
 
@@ -96,9 +117,33 @@ async def ingest_sync(
         )
         db.add(purchase)
 
+    # Append issues
+    for sync_issue in payload.issues:
+        db.add(Issue(
+            indent_number=sync_issue.indent_number,
+            outlet=sync_issue.outlet,
+            section=sync_issue.section,
+            items=sync_issue.items,
+            recorded_by=sync_issue.recorded_by,
+            s3_key=sync_issue.s3_key,
+            status="active",
+        ))
+
+    # Append wastage
+    for sync_waste in payload.wastage:
+        db.add(WastageEntry(
+            item=sync_waste.item,
+            qty=sync_waste.qty,
+            unit=sync_waste.unit,
+            reason=sync_waste.reason,
+            recorded_by=sync_waste.recorded_by,
+        ))
+
     await db.commit()
     return {
         "status": "ok",
         "inventory_upserted": len(payload.inventory),
         "purchases_added": len(payload.purchases),
+        "issues_added": len(payload.issues),
+        "wastage_added": len(payload.wastage),
     }

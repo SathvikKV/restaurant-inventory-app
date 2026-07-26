@@ -182,12 +182,25 @@ async def receive_stock(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
 
+    from app.models.public import User
+    user_record = await db.get(User, uuid.UUID(user["user_id"]))
+    recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
+    if not recorded_by_name:
+        recorded_by_name = user["user_id"]
+
     item.previous_qty = item.current_qty
     item.current_qty += body.quantity
     item.previous_updated = item.last_updated
     item.last_updated = datetime.now(timezone.utc)
 
     await db.commit()
+    
+    import asyncio
+    from app.services.mise_writeback import push_to_mise
+    asyncio.create_task(push_to_mise(
+        action="receive", item_name=item.item, quantity=body.quantity,
+        unit=item.unit, recorded_by=recorded_by_name, supplier="Kosh App"
+    ))
     return {"message": f"Received {body.quantity} units for item {item.item}"}
 
 
@@ -212,6 +225,12 @@ async def issue_stock(
     if item.current_qty < body.quantity:
         raise HTTPException(status_code=400, detail="Insufficient stock")
 
+    from app.models.public import User
+    user_record = await db.get(User, uuid.UUID(user["user_id"]))
+    recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
+    if not recorded_by_name:
+        recorded_by_name = user["user_id"]
+
     item.previous_qty = item.current_qty
     item.current_qty -= body.quantity
     item.previous_updated = item.last_updated
@@ -220,11 +239,18 @@ async def issue_stock(
     new_issue = Issue(
         outlet=body.destination,
         items={item.item: body.quantity},
-        recorded_by=user.get("user_id"),
+        recorded_by=recorded_by_name,
     )
     db.add(new_issue)
     
     await db.commit()
+    
+    import asyncio
+    from app.services.mise_writeback import push_to_mise
+    asyncio.create_task(push_to_mise(
+        action="issue", item_name=item.item, quantity=body.quantity,
+        unit=item.unit, recorded_by=recorded_by_name, destination=body.destination
+    ))
     return {"message": f"Issued {body.quantity} units of item {item.item} to {body.destination}"}
 
 
@@ -245,13 +271,26 @@ async def adjust_stock(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
 
+    from app.models.public import User
+    user_record = await db.get(User, uuid.UUID(user["user_id"]))
+    recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
+    if not recorded_by_name:
+        recorded_by_name = user["user_id"]
+
     item.previous_qty = item.current_qty
     item.current_qty = body.new_quantity
     item.previous_updated = item.last_updated
     item.last_updated = datetime.now(timezone.utc)
 
     await db.commit()
-    return {"message": f"Stock for item {item.item} adjusted to {body.new_quantity}"}
+    
+    import asyncio
+    from app.services.mise_writeback import push_to_mise
+    asyncio.create_task(push_to_mise(
+        action="adjust", item_name=item.item, quantity=body.new_quantity,
+        unit=item.unit, recorded_by=recorded_by_name, reason=body.reason
+    ))
+    return {"message": f"Adjusted item {item.item} to {body.new_quantity}"}
 
 
 @router.get("/{item_id}/transactions", summary="Get transaction history for an item")

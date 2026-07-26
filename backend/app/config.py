@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
+    mise_writeback_url: str = ""
+    mise_inbound_secret: str = ""
+
     # OTP (Twilio or similar)
     otp_provider: str = "mock"          # "twilio" | "mock"
     twilio_account_sid: str = ""
