@@ -20,7 +20,7 @@ export default function CreateRestaurantScreen() {
       if (!auth.token) throw new Error("Not authenticated");
       const restaurant = await createRestaurant(auth.token, name.trim(), branch.trim() || undefined);
       const selected = await selectRestaurant(auth.token, restaurant.id);
-      saveAuth({
+      await saveAuth({
         ...auth,
         token: selected.access_token,
         tenantId: restaurant.id,

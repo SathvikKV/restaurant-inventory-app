@@ -36,7 +36,7 @@ export default function OtpScreen() {
     try {
       const result = await verifyOTP(phone, code);
       if (result.needs_restaurant_selection) {
-        saveAuth({
+        await saveAuth({
           token: result.access_token,
           userId: result.user_id,
           role: result.role,
@@ -51,7 +51,7 @@ export default function OtpScreen() {
         const restaurants = await listRestaurants(baseToken);
         if (!restaurants || restaurants.length === 0) throw new Error("No restaurant found");
         const selected = await selectRestaurant(baseToken, restaurants[0].id);
-        saveAuth({
+        await saveAuth({
           token: selected.access_token,
           userId: result.user_id,
           role: result.role,

@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { X, Camera, ImagePlus, Check, Package } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../../lib/auth-context";
+import { saveOCRInvoice } from "../../lib/api";
 import { colors, PrimaryButton } from "../../components/ui";
 
 type LineItem = { item_name: string; quantity: number; unit: string; unit_price?: number; total_price?: number };
@@ -29,6 +30,24 @@ export default function ScanInvoiceScreen() {
   const [stage, setStage] = useState<Stage>("capture");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [result, setResult] = useState<OCRResult | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleConfirm() {
+    if (!result || !auth.token) return;
+    setSaving(true);
+    try {
+      const res = await saveOCRInvoice(auth.token, result);
+      const msg = res.new_items_created.length > 0
+        ? `Invoice recorded. New item(s) added: ${res.new_items_created.join(", ")}`
+        : "Invoice recorded successfully.";
+      Alert.alert("Done", msg);
+      router.navigate("/(app)/home" as any);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to save invoice. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function pickImage(useCamera: boolean) {
     const permission = useCamera
@@ -152,12 +171,15 @@ export default function ScanInvoiceScreen() {
       {/* Confirm button */}
       <View style={{ position: "absolute", bottom: 24, left: 24, right: 24 }}>
         <TouchableOpacity
-          onPress={() => { Alert.alert("Done", "Invoice recorded successfully."); router.navigate("/(app)/home" as any); }}
+          onPress={handleConfirm}
+          disabled={saving}
           activeOpacity={0.85}
           style={{ backgroundColor: colors.primary, borderRadius: 24, paddingVertical: 18, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 4 }}
         >
-          <Check size={20} color="white" strokeWidth={2.5} />
-          <Text style={{ color: "white", fontSize: 17, fontWeight: "800", letterSpacing: -0.3 }}>Confirm & Record</Text>
+          {saving ? <ActivityIndicator color="white" /> : <Check size={20} color="white" strokeWidth={2.5} />}
+          <Text style={{ color: "white", fontSize: 17, fontWeight: "800", letterSpacing: -0.3 }}>
+            {saving ? "Recording..." : "Confirm & Record"}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

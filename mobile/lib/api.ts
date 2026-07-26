@@ -154,6 +154,19 @@ export async function getAIRecommendations(token: string) {
   );
 }
 
+export async function saveOCRInvoice(token: string, result: {
+  supplier_name?: string; invoice_date?: string;
+  line_items: { item_name: string; quantity: number; unit: string; unit_price?: number; total_price?: number }[];
+  total_amount?: number;
+}) {
+  return request<{ status: string; new_items_created: string[] }>(
+    "/purchase-orders/from-ocr",
+    { method: "POST", body: JSON.stringify(result) },
+    token
+  );
+}
+
+
 export async function getPurchaseOrders(token: string) {
   return request<any[]>("/purchase-orders/", { method: "GET" }, token);
 }

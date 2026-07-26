@@ -2,20 +2,32 @@ import { useEffect } from "react";
 import { View, Text } from "react-native";
 import { router } from "expo-router";
 
+import { hydrateAuth, clearAuth } from "../lib/auth-store";
+import { getMe } from "../lib/api";
+
 export default function SplashScreen() {
   useEffect(() => {
-    // Clear any stale auth state on app start
-    const { clearAuth, loadAuth } = require("../lib/auth-store");
-    const auth = loadAuth();
-    if (auth.token) {
-      // Verify token is still valid by checking if it exists
-      // For now clear on every restart to avoid stale tokens
-      clearAuth();
-    }
-    const timer = setTimeout(() => {
+    (async () => {
+      const minDelay = new Promise((r) => setTimeout(r, 1200));
+      const auth = await hydrateAuth();
+
+      if (auth.token) {
+        try {
+          await getMe(auth.token); // throws if expired/invalid
+          await minDelay;
+          if (!auth.schema || auth.needsRestaurantSelection) {
+            router.replace("/onboarding/create-restaurant");
+          } else {
+            router.replace("/(app)/home");
+          }
+          return;
+        } catch {
+          await clearAuth(); // token invalid/expired — fall through to login
+        }
+      }
+      await minDelay;
       router.replace("/onboarding/welcome");
-    }, 2000);
-    return () => clearTimeout(timer);
+    })();
   }, []);
 
   return (
