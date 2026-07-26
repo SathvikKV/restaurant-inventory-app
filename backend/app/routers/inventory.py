@@ -30,7 +30,7 @@ def _map_item_response(db_item) -> dict:
     return {
         "id": str(db_item.id),
         "name": db_item.item,
-        "category": db_item.category or "Other",
+        "category": db_item.category or "misc",
         "quantity": qty,
         "unit": db_item.unit,
         "days_remaining": 0.0, # Computed fields omitted for MVP

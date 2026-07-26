@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Literal
 
 
-Category = Literal["Veg", "Non-Veg", "Dairy", "Oil", "Grains", "Beverages", "Other"]
+Category = Literal["produce", "proteins", "dairy", "dry goods", "beverages", "bakery", "packaging", "cleaning", "misc"]
 ItemStatus = Literal["critical", "low", "healthy"]
 
 
