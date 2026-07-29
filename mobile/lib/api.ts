@@ -154,11 +154,29 @@ export async function getAIRecommendations(token: string) {
   );
 }
 
-export async function saveOCRInvoice(token: string, result: {
-  supplier_name?: string; invoice_date?: string;
-  line_items: { item_name: string; quantity: number; unit: string; unit_price?: number; total_price?: number }[];
-  total_amount?: number;
-}) {
+export type LineItem = { item_name: string; quantity: number; unit: string; unit_price?: number; total_price?: number };
+export type OCRResult = { invoice_number?: string; supplier_name?: string; invoice_date?: string; line_items: LineItem[]; total_amount?: number; confidence_notes?: string };
+
+export async function uploadInvoice(token: string, imageUri: string, mimeType: string): Promise<OCRResult> {
+  const formData = new FormData();
+  formData.append("file", { uri: imageUri, name: "invoice.jpg", type: mimeType || "image/jpeg" } as any);
+  const res = await fetch("https://kosh-api.sathvik-vadavatha.site/api/v1/ai/ocr/invoice", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    let detail = "OCR failed";
+    try {
+      const errBody = await res.json();
+      detail = errBody.detail || detail;
+    } catch {}
+    throw new Error(`${detail} (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function saveOCRInvoice(token: string, result: OCRResult) {
   return request<{ status: string; new_items_created: string[] }>(
     "/purchase-orders/from-ocr",
     { method: "POST", body: JSON.stringify(result) },
@@ -189,4 +207,16 @@ export async function getTopItems(token: string, limit = 5) {
 
 export async function getFoodCostTrend(token: string, days = 7) {
   return request<any[]>(`/reports/food-cost-trend?days=${days}`, { method: "GET" }, token);
+}
+
+export async function inviteUser(token: string, phone: string, name: string, role: "owner" | "manager") {
+  return request<{ id: string; name: string; phone: string; role: string }>(
+    "/users/invite", { method: "POST", body: JSON.stringify({ phone, name, role }) }, token
+  );
+}
+
+export async function listUsers(token: string) {
+  return request<{ id: string; name: string; phone: string; role: string; is_active: boolean }[]>(
+    "/users", {}, token
+  );
 }

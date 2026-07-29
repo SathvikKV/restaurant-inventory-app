@@ -65,15 +65,6 @@ export default function CreateRestaurantScreen() {
                 </View>
               </View>
 
-              {/* Cuisine */}
-              <TouchableOpacity style={{ backgroundColor: "white", borderRadius: 24, paddingHorizontal: 20, paddingVertical: 16, flexDirection: "row", alignItems: "center", gap: 16, borderWidth: 1, borderColor: colors.border, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 1 }}>
-                <ChevronDown size={20} color={colors.textMuted} strokeWidth={2} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted, marginBottom: 2 }}>Cuisine</Text>
-                  <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain }}>North Indian</Text>
-                </View>
-                <ChevronDown size={18} color={colors.textMuted} strokeWidth={2} />
-              </TouchableOpacity>
 
               {/* Branch */}
               <View style={{ backgroundColor: "white", borderRadius: 24, paddingHorizontal: 20, paddingVertical: 16, flexDirection: "row", alignItems: "center", gap: 16, borderWidth: 1, borderColor: colors.border, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 1 }}>

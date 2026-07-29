@@ -43,8 +43,20 @@ export default function ConnectTeamScreen() {
                     </View>
                   </View>
                   <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: "600", marginBottom: 16 }}>{role.desc}</Text>
-                  <TouchableOpacity style={{ paddingVertical: 10, borderRadius: 100, backgroundColor: role.primary ? colors.primary : "white", borderWidth: role.primary ? 0 : 1.5, borderColor: colors.primary, alignItems: "center" }}>
-                    <Text style={{ fontSize: 13, fontWeight: "800", color: role.primary ? "white" : colors.primary }}>{role.action}</Text>
+                  <TouchableOpacity
+                    disabled={role.primary}
+                    style={{
+                      paddingVertical: 10,
+                      borderRadius: 100,
+                      backgroundColor: role.primary ? colors.card : "white",
+                      borderWidth: role.primary ? 0 : 1.5,
+                      borderColor: colors.primary,
+                      alignItems: "center",
+                      opacity: role.primary ? 0.6 : 1,
+                    }}>
+                    <Text style={{ fontSize: 13, fontWeight: "800", color: role.primary ? colors.textMuted : colors.primary }}>
+                      {role.primary ? "Coming soon" : role.action}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>

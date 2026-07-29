@@ -5,23 +5,8 @@ import { router } from "expo-router";
 import { X, Camera, ImagePlus, Check, Package } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../../lib/auth-context";
-import { saveOCRInvoice } from "../../lib/api";
+import { saveOCRInvoice, uploadInvoice, OCRResult, LineItem } from "../../lib/api";
 import { colors, PrimaryButton } from "../../components/ui";
-
-type LineItem = { item_name: string; quantity: number; unit: string; unit_price?: number; total_price?: number };
-type OCRResult = { invoice_number?: string; supplier_name?: string; invoice_date?: string; line_items: LineItem[]; total_amount?: number; confidence_notes?: string };
-
-async function uploadInvoice(token: string, imageUri: string, mimeType: string): Promise<OCRResult> {
-  const formData = new FormData();
-  formData.append("file", { uri: imageUri, name: "invoice.jpg", type: mimeType || "image/jpeg" } as any);
-  const res = await fetch("https://kosh-api.sathvik-vadavatha.site/api/v1/ai/ocr/invoice", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  if (!res.ok) throw new Error("OCR failed");
-  return res.json();
-}
 
 type Stage = "capture" | "processing" | "review";
 

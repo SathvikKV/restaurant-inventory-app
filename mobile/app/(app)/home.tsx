@@ -58,9 +58,9 @@ export default function HomeScreen() {
 
   const quickActions = [
     { label: "Receive", icon: Scan, route: "/(app)/scan-invoice", color: colors.textMain },
-    { label: "Adjust", icon: PenLine, route: "/(app)/inventory", color: colors.textMain },
-    { label: "Issue", icon: ArrowDownToLine, route: "/(app)/inventory", color: colors.textMain },
-    { label: "Waste", icon: AlertTriangle, route: "/(app)/inventory", color: "#EF4444" },
+    { label: "Adjust", icon: PenLine, route: "/(app)/adjust-stock", color: colors.textMain },
+    { label: "Issue", icon: ArrowDownToLine, route: "/(app)/issue-stock", color: colors.textMain },
+    { label: "Waste", icon: AlertTriangle, route: "/(app)/log-wastage", color: "#EF4444" },
   ];
 
   if (loading) {

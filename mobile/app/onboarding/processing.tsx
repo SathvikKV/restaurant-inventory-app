@@ -1,34 +1,40 @@
-import { useState, useEffect } from "react";
+import { useLocalSearchParams, router } from "expo-router";
+import { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
 import { Check } from "lucide-react-native";
 import { MiseLogo, colors } from "../../components/ui";
-
-const STEPS = [
-  "Reading invoice",
-  "Learning inventory & pricing",
-  "Identifying suppliers",
-  "Processing menu & recipes",
-  "Setting up intelligence",
-];
+import { uploadInvoice, saveOCRInvoice } from "../../lib/api";
+import { useAuth } from "../../lib/auth-context";
 
 export default function ProcessingScreen() {
-  const [activeStep, setActiveStep] = useState(0);
+  const { imageUri, mimeType } = useLocalSearchParams<{ imageUri?: string; mimeType?: string }>();
+  const { auth } = useAuth();
+  const [stepLabel, setStepLabel] = useState("Reading invoice");
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveStep(prev => {
-        if (prev >= STEPS.length) {
-          clearInterval(timer);
-          setTimeout(() => router.replace("/onboarding/success"), 500);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, 800);
-    return () => clearInterval(timer);
+    (async () => {
+      if (!imageUri || !auth.token) {
+        router.replace({ pathname: "/onboarding/success", params: { itemCount: "0" } });
+        return;
+      }
+      try {
+        setStepLabel("Reading invoice");
+        const ocr = await uploadInvoice(auth.token, imageUri, mimeType || "image/jpeg");
+        setStepLabel("Learning inventory & pricing");
+        const saveRes = await saveOCRInvoice(auth.token, ocr);
+        router.replace({
+          pathname: "/onboarding/success",
+          params: { itemCount: String(ocr.line_items?.length || 0), newItems: saveRes.new_items_created.join(",") },
+        });
+      } catch (e: any) {
+        router.replace({ pathname: "/onboarding/success", params: { itemCount: "0", error: e.message || "Failed to process invoice" } });
+      }
+    })();
   }, []);
+
+  const STEPS = ["Reading invoice", "Learning inventory & pricing"];
+  const activeStep = stepLabel === "Reading invoice" ? 0 : 1;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>

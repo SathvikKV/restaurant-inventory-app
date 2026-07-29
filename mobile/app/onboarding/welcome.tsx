@@ -3,6 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { User, ArrowRight } from "lucide-react-native";
 import { MiseLogo, colors } from "../../components/ui";
+import { hydrateAuth } from "../../lib/auth-store";
 
 function StorefrontIllustration() {
   return (
@@ -74,7 +75,11 @@ export default function WelcomeScreen() {
           </View>
 
           <TouchableOpacity
-            onPress={() => router.push("/onboarding/phone")}
+            onPress={async () => {
+              const auth = await hydrateAuth();
+              if (auth.token) router.replace("/(app)/home");
+              else router.push("/onboarding/phone");
+            }}
             activeOpacity={0.7}
             style={{
               backgroundColor: "white",

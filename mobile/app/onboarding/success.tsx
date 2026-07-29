@@ -1,16 +1,21 @@
+import { useLocalSearchParams, router } from "expo-router";
 import { View, Text, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
 import { Check, Users, FileText, Menu } from "lucide-react-native";
 import { MiseLogo, colors } from "../../components/ui";
 
-const SUMMARY = [
-  { Icon: Users, title: "Team Connected", desc: "Kitchen, Billing, Manager" },
-  { Icon: FileText, title: "Invoice Uploaded", desc: "We've learned your inventory" },
-  { Icon: Menu, title: "Menu Uploaded", desc: "We've created your recipes" },
-];
-
 export default function SuccessScreen() {
+  const { itemCount, newItems, error } = useLocalSearchParams<{ itemCount?: string; newItems?: string; error?: string }>();
+  const count = parseInt(itemCount || "0", 10);
+
+  const SUMMARY = [];
+  if (count > 0) {
+    SUMMARY.push({ Icon: FileText, title: "Invoice Uploaded", desc: `Learned ${count} items` });
+  } else if (error) {
+    SUMMARY.push({ Icon: FileText, title: "Invoice Failed", desc: error + ". You can upload it later from Scan Invoice." });
+  } else {
+    SUMMARY.push({ Icon: FileText, title: "Ready", desc: "You can upload an invoice later." });
+  }
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 80, paddingBottom: 48, justifyContent: "space-between", alignItems: "center" }}>

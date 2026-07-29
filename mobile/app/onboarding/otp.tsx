@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, P
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
-import { verifyOTP, listRestaurants, selectRestaurant } from "../../lib/api";
+import { verifyOTP, listRestaurants, selectRestaurant, requestOTP } from "../../lib/api";
 import { saveAuth } from "../../lib/auth-store";
 import { colors } from "../../components/ui";
 
@@ -119,9 +119,18 @@ export default function OtpScreen() {
               ))}
             </View>
 
-            <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center" }}>
-              Resend code in <Text style={{ fontWeight: "800", color: colors.textMain }}>00:28</Text>
-            </Text>
+            <TouchableOpacity onPress={async () => {
+              try {
+                await requestOTP(phone);
+                Alert.alert("Success", "Code resent!");
+              } catch (e: any) {
+                Alert.alert("Error", e.message || "Failed to resend code");
+              }
+            }} style={{ padding: 12 }}>
+              <Text style={{ fontSize: 14, color: colors.primary, fontWeight: "800", textAlign: "center" }}>
+                Resend code
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <TouchableOpacity

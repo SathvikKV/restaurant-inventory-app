@@ -2,10 +2,12 @@
 Kosh Backend — FastAPI application entry point.
 """
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.database import Base, engine
 from app.routers import auth, restaurants, inventory, purchase_orders, wastage, users, ai, reports, sync
 
 settings = get_settings()
@@ -15,12 +17,20 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Bootstrap public schema
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+
 app = FastAPI(
     title="Kosh API",
     description="Backend API for Kosh — Smart Inventory Management for Restaurants",
     version="0.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # ---------------------------------------------------------------------------
