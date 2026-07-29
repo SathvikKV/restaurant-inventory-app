@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -39,6 +40,15 @@ class OCRResult(BaseModel):
     line_items: List[OCRLineItem]
     total_amount: Optional[float] = None
     confidence_notes: Optional[str] = None
+
+class MenuIngredient(BaseModel):
+    name: str
+    unit: str
+    category: str
+
+class MenuOCRResult(BaseModel):
+    dishes: List[str]
+    ingredients: List[MenuIngredient]
 
 
 def _get_gemini():
@@ -120,7 +130,7 @@ Answer the user's question concisely based on this inventory data."""
 
     try:
         full_prompt = system_context + f"\n\nUser: {body.message}"
-        response = model.generate_content(full_prompt)
+        response = await asyncio.to_thread(model.generate_content, full_prompt)
         return ChatResponse(reply=response.text)
     except Exception as e:
         return ChatResponse(reply=f"AI error: {str(e)}")
@@ -164,10 +174,13 @@ async def ocr_invoice(
   "total_amount": number or null
 }"""
 
-        response = model.generate_content([
-            prompt,
-            {"mime_type": file.content_type or "image/jpeg", "data": image_b64}
-        ])
+        response = await asyncio.to_thread(
+            model.generate_content,
+            [
+                prompt,
+                {"mime_type": file.content_type or "image/jpeg", "data": image_b64}
+            ]
+        )
 
         text = response.text.strip()
         if text.startswith("```"):
@@ -186,6 +199,60 @@ async def ocr_invoice(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
 
+@router.post("/ocr/menu", response_model=MenuOCRResult, summary="Extract dishes and infer core ingredients from a menu photo")
+async def ocr_menu(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    if not settings.gemini_api_key:
+        return MenuOCRResult(
+            dishes=["Demo Dish 1", "Demo Dish 2"],
+            ingredients=[
+                MenuIngredient(name="Demo Ingredient 1", unit="kg", category="produce"),
+                MenuIngredient(name="Demo Ingredient 2", unit="litre", category="dairy"),
+            ]
+        )
+
+    try:
+        import google.generativeai as genai
+        import asyncio
+        genai.configure(api_key=settings.gemini_api_key)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+
+        image_bytes = await file.read()
+        import base64
+        image_b64 = base64.b64encode(image_bytes).decode()
+
+        prompt = """You are analyzing a restaurant menu photo. 
+1. Identify each distinct dish name listed.
+2. For the dishes as a whole, infer a realistic, deduplicated list of core raw ingredients a restaurant would need to stock to prepare them — not exact recipe quantities, just the ingredient names.
+3. For each ingredient, assign: a sensible unit (kg, litre, piece, etc.) and a category, which MUST be exactly one of: produce, proteins, dairy, dry goods, beverages, bakery, packaging, cleaning, misc.
+
+Return strict JSON only, matching this shape:
+{"dishes": ["..."], "ingredients": [{"name": "...", "unit": "...", "category": "..."}]}
+Do not include quantities — the restaurant will set their own stock levels afterward."""
+
+        response = await asyncio.to_thread(
+            model.generate_content,
+            [
+                prompt,
+                {"mime_type": file.content_type or "image/jpeg", "data": image_b64}
+            ]
+        )
+
+        text = response.text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        data = json.loads(text.strip())
+
+        return MenuOCRResult(
+            dishes=data.get("dishes", []),
+            ingredients=[MenuIngredient(**item) for item in data.get("ingredients", [])]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Menu OCR failed: {str(e)}")
 
 @router.get("/insights", summary="Get AI-generated insights")
 async def get_insights(

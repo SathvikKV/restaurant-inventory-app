@@ -5,7 +5,7 @@ import { ChevronLeft, Lock, Camera, ImagePlus } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { colors } from "../../components/ui";
 
-export default function UploadInvoiceScreen() {
+export default function UploadMenuScreen() {
   async function handlePick(useCamera: boolean) {
     const permission = useCamera
       ? await ImagePicker.requestCameraPermissionsAsync()
@@ -29,9 +29,9 @@ export default function UploadInvoiceScreen() {
             <ChevronLeft size={24} color={colors.textMain} strokeWidth={2} />
           </TouchableOpacity>
 
-          <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, textAlign: "center", letterSpacing: -0.5, marginBottom: 12 }}>Teach SANQ</Text>
+          <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, textAlign: "center", letterSpacing: -0.5, marginBottom: 12 }}>Upload Your Menu</Text>
           <Text style={{ fontSize: 15, color: colors.textMuted, fontWeight: "600", textAlign: "center", lineHeight: 22, marginBottom: 24, maxWidth: 260, alignSelf: "center" }}>
-            Take a photo or choose from your library.
+            Take a photo or choose from your library so SANQ can learn your ingredients.
           </Text>
 
           <TouchableOpacity
@@ -43,7 +43,7 @@ export default function UploadInvoiceScreen() {
               <Camera size={32} color={colors.primary} strokeWidth={2} />
             </View>
             <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain }}>Take Photo</Text>
-            <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center" }}>Use your camera to capture the invoice</Text>
+            <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center" }}>Use your camera to capture the menu</Text>
           </TouchableOpacity>
 
           <TouchableOpacity

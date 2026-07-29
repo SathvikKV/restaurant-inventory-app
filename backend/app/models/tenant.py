@@ -93,6 +93,17 @@ def make_tenant_models(schema: str) -> dict:
         source: Mapped[str] = mapped_column(String(50), default="whatsapp")
         created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+    class StaffContact(Base):
+        __tablename__ = "staff_contacts"
+        __table_args__ = {"schema": schema, "extend_existing": True}
+
+        id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+        name: Mapped[str] = mapped_column(String(255), nullable=False)
+        phone: Mapped[str] = mapped_column(String(20), nullable=False)
+        role_label: Mapped[str] = mapped_column(String(50), nullable=False)
+        status: Mapped[str] = mapped_column(String(30), default="pending_whatsapp_connection")
+        created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
     result = {
         "inventory": InventoryItem,
         "purchases": Purchase,
@@ -100,6 +111,7 @@ def make_tenant_models(schema: str) -> dict:
         "wastage": WastageEntry,
         "item_aliases": ItemAlias,
         "confirmations": PendingConfirmation,
+        "staff_contacts": StaffContact,
     }
     _model_cache[schema] = result
     return result

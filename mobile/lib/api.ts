@@ -176,14 +176,43 @@ export async function uploadInvoice(token: string, imageUri: string, mimeType: s
   return res.json();
 }
 
-export async function saveOCRInvoice(token: string, result: OCRResult) {
-  return request<{ status: string; new_items_created: string[] }>(
-    "/purchase-orders/from-ocr",
-    { method: "POST", body: JSON.stringify(result) },
-    token
+export async function saveOCRInvoice(token: string, ocrData: any) {
+  return request<{ new_items_created: string[] }>(
+    "/purchases/from-ocr", { method: "POST", body: JSON.stringify(ocrData) }, token
   );
 }
 
+export async function uploadMenu(token: string, imageUri: string, mimeType: string): Promise<any> {
+  const formData = new FormData();
+  formData.append("file", { uri: imageUri, name: "menu.jpg", type: mimeType } as any);
+  
+  const res = await fetch(`${BASE_URL}/ai/ocr/menu`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "Failed to process menu");
+  }
+  return res.json();
+}
+
+export async function saveMenuIngredients(token: string, ingredients: any[]): Promise<any> {
+  const res = await fetch(`${BASE_URL}/inventory/bulk-create`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ ingredients }),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "Failed to save ingredients");
+  }
+  return res.json();
+}
 
 export async function getPurchaseOrders(token: string) {
   return request<any[]>("/purchase-orders/", { method: "GET" }, token);
@@ -209,10 +238,36 @@ export async function getFoodCostTrend(token: string, days = 7) {
   return request<any[]>(`/reports/food-cost-trend?days=${days}`, { method: "GET" }, token);
 }
 
-export async function inviteUser(token: string, phone: string, name: string, role: "owner" | "manager") {
-  return request<{ id: string; name: string; phone: string; role: string }>(
-    "/users/invite", { method: "POST", body: JSON.stringify({ phone, name, role }) }, token
-  );
+export async function inviteUser(token: string, phone: string, name: string, role: "manager" | "owner"): Promise<any> {
+  const res = await fetch(`${API_URL}/users/invite`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ phone, name, role }),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "Failed to invite user");
+  }
+  return res.json();
+}
+
+export async function createStaffContact(token: string, phone: string, name: string, role_label: string): Promise<any> {
+  const res = await fetch(`${API_URL}/users/staff-contacts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ phone, name, role_label }),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(error.detail || "Failed to create staff contact");
+  }
+  return res.json();
 }
 
 export async function listUsers(token: string) {

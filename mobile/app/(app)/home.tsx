@@ -8,7 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 import { getInventoryHealth, getInventory, getAuditLog, getMe } from "../../lib/api";
 import { MiseLogo, colors, Card } from "../../components/ui";
 
-type HealthData = { score: number; critical: number; low: number; healthy: number; total: number };
+type HealthData = { score: number; critical: number; low: number; healthy: number; total: number; label?: string };
 type InventoryItem = { id: string; name: string; unit: string; quantity: number; status: string };
 type AuditEntry = { id?: string; description?: string; recorded_by?: string; created_at?: string; type?: string };
 
@@ -52,9 +52,14 @@ export default function HomeScreen() {
 
   const restaurantName = auth.restaurantName || "Minerva Coffee Shop";
   const score = health.score;
-  const badgeLabel = score >= 80 ? "Healthy" : "Needs Work";
-  const badgeBg = score >= 80 ? "#ECFDF5" : score >= 50 ? "#FFF7ED" : "#FEF2F2";
-  const badgeText = score >= 80 ? "#065F46" : score >= 50 ? "#9A3412" : "#991B1B";
+  const badgeLabel = health.label || (score >= 80 ? "Healthy" : "Needs Work");
+  let badgeBg = score >= 80 ? "#ECFDF5" : score >= 50 ? "#FFF7ED" : "#FEF2F2";
+  let badgeText = score >= 80 ? "#065F46" : score >= 50 ? "#9A3412" : "#991B1B";
+  
+  if (health.label === "No items") {
+    badgeBg = "#F4F5F7";
+    badgeText = "#687076";
+  }
 
   const quickActions = [
     { label: "Receive", icon: Scan, route: "/(app)/scan-invoice", color: colors.textMain },

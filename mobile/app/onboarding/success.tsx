@@ -10,11 +10,11 @@ export default function SuccessScreen() {
 
   const SUMMARY = [];
   if (count > 0) {
-    SUMMARY.push({ Icon: FileText, title: "Invoice Uploaded", desc: `Learned ${count} items` });
+    SUMMARY.push({ Icon: FileText, title: "Menu Processed", desc: `Learned ${count} ingredients from your menu` });
   } else if (error) {
-    SUMMARY.push({ Icon: FileText, title: "Invoice Failed", desc: error + ". You can upload it later from Scan Invoice." });
+    SUMMARY.push({ Icon: FileText, title: "Menu Failed", desc: error + ". You can try uploading again later." });
   } else {
-    SUMMARY.push({ Icon: FileText, title: "Ready", desc: "You can upload an invoice later." });
+    SUMMARY.push({ Icon: FileText, title: "Ready", desc: "You can upload a menu later." });
   }
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>

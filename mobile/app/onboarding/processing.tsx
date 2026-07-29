@@ -4,7 +4,7 @@ import { View, Text, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Check } from "lucide-react-native";
 import { MiseLogo, colors } from "../../components/ui";
-import { uploadInvoice, saveOCRInvoice } from "../../lib/api";
+import { uploadMenu } from "../../lib/api";
 import { useAuth } from "../../lib/auth-context";
 
 export default function ProcessingScreen() {
@@ -19,22 +19,21 @@ export default function ProcessingScreen() {
         return;
       }
       try {
-        setStepLabel("Reading invoice");
-        const ocr = await uploadInvoice(auth.token, imageUri, mimeType || "image/jpeg");
-        setStepLabel("Learning inventory & pricing");
-        const saveRes = await saveOCRInvoice(auth.token, ocr);
+        setStepLabel("Reading menu");
+        const res = await uploadMenu(auth.token, imageUri, mimeType || "image/jpeg");
+        
         router.replace({
-          pathname: "/onboarding/success",
-          params: { itemCount: String(ocr.line_items?.length || 0), newItems: saveRes.new_items_created.join(",") },
+          pathname: "/onboarding/review-ingredients",
+          params: { ingredientsJson: JSON.stringify(res.ingredients || []) },
         });
       } catch (e: any) {
-        router.replace({ pathname: "/onboarding/success", params: { itemCount: "0", error: e.message || "Failed to process invoice" } });
+        router.replace({ pathname: "/onboarding/success", params: { itemCount: "0", error: e.message || "Failed to process menu" } });
       }
     })();
   }, []);
 
-  const STEPS = ["Reading invoice", "Learning inventory & pricing"];
-  const activeStep = stepLabel === "Reading invoice" ? 0 : 1;
+  const STEPS = ["Reading menu", "Learning inventory requirements"];
+  const activeStep = stepLabel === "Reading menu" ? 0 : 1;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>

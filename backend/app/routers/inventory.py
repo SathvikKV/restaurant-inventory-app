@@ -15,6 +15,15 @@ from app.schemas.inventory import (
     InventoryItemResponse, InventoryItemCreate, InventoryItemUpdate,
     StockAdjustRequest, StockIssueRequest, StockReceiveRequest,
 )
+from pydantic import BaseModel
+
+class MenuIngredient(BaseModel):
+    name: str
+    unit: str
+    category: str
+
+class BulkIngredientCreate(BaseModel):
+    ingredients: List[MenuIngredient]
 
 router = APIRouter()
 
@@ -41,6 +50,27 @@ def _map_item_response(db_item) -> dict:
         "suppliers": [],
         "price_history": []
     }
+
+@router.post("/bulk-create", summary="Bulk-create inventory items from reviewed menu extraction")
+async def bulk_create_inventory(body: BulkIngredientCreate, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    schema = require_schema(user)
+    models = get_tenant_models(schema)
+    InventoryItem = models["inventory"]
+    created = []
+    for ing in body.ingredients:
+        item = InventoryItem(
+            item=ing.name, 
+            unit=ing.unit, 
+            current_qty=0.0, 
+            previous_qty=0.0, 
+            reorder_threshold=0.0, 
+            category=ing.category, 
+            last_updated=datetime.now(timezone.utc)
+        )
+        db.add(item)
+        created.append(ing.name)
+    await db.commit()
+    return {"status": "ok", "items_created": len(created)}
 
 @router.get("/", response_model=List[InventoryItemResponse], summary="List all inventory items")
 async def list_inventory(

@@ -9,8 +9,15 @@ from typing import List
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.services.tenant_registry import require_schema, get_tenant_models
 from app.models.public import User
 from app.schemas.common import UserResponse, UserCreate, UserUpdate
+from pydantic import BaseModel
+
+class StaffContactCreate(BaseModel):
+    name: str
+    phone: str
+    role_label: str
 
 router = APIRouter()
 
@@ -149,3 +156,22 @@ async def deactivate_user(
         await db.commit()
 
     return None
+
+@router.post("/staff-contacts", summary="Register a staff contact for future WhatsApp connection")
+async def create_staff_contact(body: StaffContactCreate, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    schema = require_schema(user)
+    models = get_tenant_models(schema)
+    StaffContact = models["staff_contacts"]
+    contact = StaffContact(name=body.name, phone=body.phone, role_label=body.role_label)
+    db.add(contact)
+    await db.commit()
+    await db.refresh(contact)
+    return {"id": str(contact.id), "name": contact.name, "phone": contact.phone, "role_label": contact.role_label, "status": contact.status}
+
+@router.get("/staff-contacts", summary="List staff contacts for the restaurant")
+async def list_staff_contacts(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    schema = require_schema(user)
+    models = get_tenant_models(schema)
+    StaffContact = models["staff_contacts"]
+    result = await db.execute(select(StaffContact))
+    return [{"id": str(c.id), "name": c.name, "phone": c.phone, "role_label": c.role_label, "status": c.status} for c in result.scalars().all()]
