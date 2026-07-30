@@ -29,6 +29,7 @@ class RestaurantResponse(BaseModel):
     schema_name: str
     tenant_type: str
     is_active: bool
+    sheet_url: Optional[str] = None
 
 
 @router.post("", response_model=RestaurantResponse, summary="Create a new restaurant")
@@ -50,6 +51,7 @@ async def create_restaurant(
         schema_name=tenant.schema_name,
         tenant_type=tenant.tenant_type.value,
         is_active=tenant.is_active,
+        sheet_url=tenant.sheet_url,
     )
 
 
@@ -67,6 +69,7 @@ async def list_restaurants(
             schema_name=t.schema_name,
             tenant_type=t.tenant_type.value,
             is_active=t.is_active,
+            sheet_url=t.sheet_url,
         )
         for t in tenants
     ]
@@ -87,6 +90,7 @@ async def get_restaurant(
         schema_name=tenant.schema_name,
         tenant_type=tenant.tenant_type.value,
         is_active=tenant.is_active,
+        sheet_url=tenant.sheet_url,
     )
 
 

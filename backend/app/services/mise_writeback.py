@@ -6,11 +6,11 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 async def push_to_mise(action: str, item_name: str, quantity: float, unit: str,
-                         recorded_by: str, **extra) -> None:
+                         recorded_by: str, spreadsheet_id: str = None, **extra) -> None:
     if not settings.mise_writeback_url:
         return
     payload = {"action": action, "item_name": item_name, "quantity": quantity,
-               "unit": unit, "recorded_by": recorded_by, **extra}
+               "unit": unit, "recorded_by": recorded_by, "spreadsheet_id": spreadsheet_id, **extra}
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(

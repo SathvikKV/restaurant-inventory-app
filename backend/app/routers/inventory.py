@@ -53,9 +53,25 @@ def _map_item_response(db_item) -> dict:
 
 @router.post("/bulk-create", summary="Bulk-create inventory items from reviewed menu extraction")
 async def bulk_create_inventory(body: BulkIngredientCreate, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    schema = require_schema(user)
+    schema = user.get("schema")
+    if not schema:
+        raise HTTPException(status_code=400, detail="User has no assigned restaurant")
     models = get_tenant_models(schema)
     InventoryItem = models["inventory"]
+    
+    from app.models.public import User, Tenant
+    import uuid
+    user_record = await db.get(User, uuid.UUID(user["user_id"]))
+    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
+    
+    recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
+    if not recorded_by_name:
+        recorded_by_name = user["user_id"]
+
+    import asyncio
+    from app.services.mise_writeback import push_to_mise
+
     created = []
     for ing in body.ingredients:
         item = InventoryItem(
@@ -69,6 +85,13 @@ async def bulk_create_inventory(body: BulkIngredientCreate, user: dict = Depends
         )
         db.add(item)
         created.append(ing.name)
+        
+        asyncio.create_task(push_to_mise(
+            action="adjust", item_name=ing.name, quantity=0.0,
+            unit=ing.unit, recorded_by=recorded_by_name, reason="Initial Menu Extraction",
+            spreadsheet_id=spreadsheet_id
+        ))
+        
     await db.commit()
     return {"status": "ok", "items_created": len(created)}
 
@@ -212,8 +235,11 @@ async def receive_stock(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
 
-    from app.models.public import User
+    from app.models.public import User, Tenant
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
+    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
+    
     recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
     if not recorded_by_name:
         recorded_by_name = user["user_id"]
@@ -229,7 +255,8 @@ async def receive_stock(
     from app.services.mise_writeback import push_to_mise
     asyncio.create_task(push_to_mise(
         action="receive", item_name=item.item, quantity=body.quantity,
-        unit=item.unit, recorded_by=recorded_by_name, supplier="Kosh App"
+        unit=item.unit, recorded_by=recorded_by_name, supplier="Kosh App",
+        spreadsheet_id=spreadsheet_id
     ))
     return {"message": f"Received {body.quantity} units for item {item.item}"}
 
@@ -255,8 +282,11 @@ async def issue_stock(
     if item.current_qty < body.quantity:
         raise HTTPException(status_code=400, detail="Insufficient stock")
 
-    from app.models.public import User
+    from app.models.public import User, Tenant
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
+    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
+    
     recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
     if not recorded_by_name:
         recorded_by_name = user["user_id"]
@@ -279,7 +309,8 @@ async def issue_stock(
     from app.services.mise_writeback import push_to_mise
     asyncio.create_task(push_to_mise(
         action="issue", item_name=item.item, quantity=body.quantity,
-        unit=item.unit, recorded_by=recorded_by_name, destination=body.destination
+        unit=item.unit, recorded_by=recorded_by_name, destination=body.destination,
+        spreadsheet_id=spreadsheet_id
     ))
     return {"message": f"Issued {body.quantity} units of item {item.item} to {body.destination}"}
 
@@ -301,8 +332,11 @@ async def adjust_stock(
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
 
-    from app.models.public import User
+    from app.models.public import User, Tenant
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
+    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
+    
     recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
     if not recorded_by_name:
         recorded_by_name = user["user_id"]
@@ -318,7 +352,8 @@ async def adjust_stock(
     from app.services.mise_writeback import push_to_mise
     asyncio.create_task(push_to_mise(
         action="adjust", item_name=item.item, quantity=body.new_quantity,
-        unit=item.unit, recorded_by=recorded_by_name, reason=body.reason
+        unit=item.unit, recorded_by=recorded_by_name, reason=body.reason,
+        spreadsheet_id=spreadsheet_id
     ))
     return {"message": f"Adjusted item {item.item} to {body.new_quantity}"}
 

@@ -25,6 +25,8 @@ class Tenant(Base):
     tenant_type: Mapped[TenantType] = mapped_column(SAEnum(TenantType), default=TenantType.restaurant)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    spreadsheet_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sheet_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     users: Mapped[list["User"]] = relationship("User", back_populates="tenant")
 

@@ -5,6 +5,11 @@ from sqlalchemy import select, update, text
 from app.models.public import Tenant, User
 from app.models.tenant import make_tenant_models
 from app.database import create_tenant_schema, engine, Base
+import logging
+import httpx
+from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 def slugify(name: str) -> str:
     """Convert restaurant name to a valid Postgres schema name."""
@@ -72,6 +77,27 @@ async def create_tenant(
     # Now create tables — schema is committed and visible
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Provision sheet
+    settings = get_settings()
+    if settings.mise_writeback_url:
+        provision_url = settings.mise_writeback_url.rsplit('/kosh/write-back', 1)[0] + "/kosh/provision-sheet"
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    provision_url,
+                    json={"restaurant_name": name},
+                    headers={"X-Sync-Token": settings.mise_inbound_secret},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                tenant.spreadsheet_id = data.get("spreadsheet_id")
+                tenant.sheet_url = data.get("sheet_url")
+                db.add(tenant)
+                await db.commit()
+                await db.refresh(tenant)
+        except Exception as e:
+            logger.error(f"Sheet provisioning failed for new tenant {name}: {e}")
 
     return tenant
 
