@@ -59,7 +59,7 @@ export async function createRestaurant(
 }
 
 export async function listRestaurants(token: string) {
-  return request<{ id: string; name: string; schema_name: string }[]>(
+  return request<{ id: string; name: string; schema_name: string; sheet_url: string | null }[]>(
     "/restaurants",
     { method: "GET" },
     token

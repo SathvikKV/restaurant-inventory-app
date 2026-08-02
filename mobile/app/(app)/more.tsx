@@ -13,7 +13,7 @@ const MENU_ITEMS = [
   { icon: Users, label: "Team Management", bg: "#EFF6FF", color: "#2563EB", badge: null, route: "/(app)/team-management" },
   { icon: FileText, label: "Activity History", bg: "#ECFDF5", color: "#059669", route: "/(app)/activity-history" },
   { icon: Receipt, label: "Invoice History", bg: "#F5F3FF", color: "#7C3AED", route: "/(app)/invoice-history" },
-  { icon: Store, label: "Workspace Settings", bg: "#F4F5F7", color: "#687076", route: null },
+  { icon: Store, label: "Workspace Settings", bg: "#F4F5F7", color: "#687076", route: "/(app)/workspace-settings" },
 ];
 
 export default function MoreScreen() {
