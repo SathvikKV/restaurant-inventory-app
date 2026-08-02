@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, DateTime, Float, Integer, Boolean, Text, JSON
+from sqlalchemy import String, DateTime, Float, Integer, Boolean, Text, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -104,6 +104,25 @@ def make_tenant_models(schema: str) -> dict:
         status: Mapped[str] = mapped_column(String(30), default="pending_whatsapp_connection")
         created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+    class Recipe(Base):
+        __tablename__ = "recipes"
+        __table_args__ = {"schema": schema, "extend_existing": True}
+
+        id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+        name: Mapped[str] = mapped_column(String(255), nullable=False)
+        created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    class RecipeIngredient(Base):
+        __tablename__ = "recipe_ingredients"
+        __table_args__ = {"schema": schema, "extend_existing": True}
+
+        id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+        recipe_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey(f"{schema}.recipes.id", ondelete="CASCADE"), nullable=False)
+        item_name: Mapped[str] = mapped_column(String(255), nullable=False)
+        quantity_per_serving: Mapped[float] = mapped_column(Float, nullable=False)
+        unit: Mapped[str] = mapped_column(String(50), nullable=False)
+        category: Mapped[str] = mapped_column(String(50), nullable=False)
+
     result = {
         "inventory": InventoryItem,
         "purchases": Purchase,
@@ -112,6 +131,8 @@ def make_tenant_models(schema: str) -> dict:
         "item_aliases": ItemAlias,
         "confirmations": PendingConfirmation,
         "staff_contacts": StaffContact,
+        "recipes": Recipe,
+        "recipe_ingredients": RecipeIngredient,
     }
     _model_cache[schema] = result
     return result

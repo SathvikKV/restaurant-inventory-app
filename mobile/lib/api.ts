@@ -182,7 +182,11 @@ export async function saveOCRInvoice(token: string, ocrData: any) {
   );
 }
 
-export async function uploadMenu(token: string, imageUri: string, mimeType: string): Promise<any> {
+export type RecipeIngredientOut = { name: string; unit: string; quantity_per_serving: number; category: string };
+export type RecipeOut = { dish_name: string; ingredients: RecipeIngredientOut[] };
+export type MenuOCRResult = { recipes: RecipeOut[] };
+
+export async function uploadMenu(token: string, imageUri: string, mimeType: string): Promise<MenuOCRResult> {
   const formData = new FormData();
   formData.append("file", { uri: imageUri, name: "menu.jpg", type: mimeType } as any);
   
@@ -273,5 +277,44 @@ export async function createStaffContact(token: string, phone: string, name: str
 export async function listUsers(token: string) {
   return request<{ id: string; name: string; phone: string; role: string; is_active: boolean }[]>(
     "/users", {}, token
+  );
+}
+
+export async function saveRecipes(
+  token: string,
+  recipes: { dish_name: string; ingredients: { name: string; unit: string; quantity_per_serving: number; category: string }[] }[]
+) {
+  return request<{ status: string; recipes_created: number; ingredients_seeded: number }>(
+    "/recipes/bulk-create",
+    { method: "POST", body: JSON.stringify({ recipes }) },
+    token
+  );
+}
+
+export async function listRecipes(token: string) {
+  return request<{ id: string; name: string; ingredient_count: number }[]>(
+    "/recipes",
+    { method: "GET" },
+    token
+  );
+}
+
+export async function getRecipe(token: string, recipeId: string) {
+  return request<{
+    id: string;
+    name: string;
+    ingredients: { id: string; name: string; unit: string; quantity_per_serving: number; category: string }[];
+  }>(`/recipes/${recipeId}`, { method: "GET" }, token);
+}
+
+export async function updateRecipeIngredients(
+  token: string,
+  recipeId: string,
+  ingredients: { name: string; unit: string; quantity_per_serving: number; category: string }[]
+) {
+  return request<{ status: string; message: string; count: number }>(
+    `/recipes/${recipeId}/ingredients`,
+    { method: "PUT", body: JSON.stringify({ ingredients }) },
+    token
   );
 }

@@ -5,12 +5,13 @@ import { Check, Users, FileText, Menu } from "lucide-react-native";
 import { MiseLogo, colors } from "../../components/ui";
 
 export default function SuccessScreen() {
-  const { itemCount, newItems, error } = useLocalSearchParams<{ itemCount?: string; newItems?: string; error?: string }>();
-  const count = parseInt(itemCount || "0", 10);
+  const { itemCount, newItems, error, recipesCreated, ingredientsSeeded } = useLocalSearchParams<{ itemCount?: string; newItems?: string; error?: string; recipesCreated?: string; ingredientsSeeded?: string }>();
+  const rCount = parseInt(recipesCreated || "0", 10);
+  const count = parseInt(ingredientsSeeded || itemCount || "0", 10);
 
   const SUMMARY = [];
-  if (count > 0) {
-    SUMMARY.push({ Icon: FileText, title: "Menu Processed", desc: `Learned ${count} ingredients from your menu` });
+  if (rCount > 0 || count > 0) {
+    SUMMARY.push({ Icon: FileText, title: "Menu Processed", desc: rCount > 0 ? `Learned ${rCount} recipes and seeded ${count} starting ingredients.` : `Learned ${count} ingredients from your menu` });
   } else if (error) {
     SUMMARY.push({ Icon: FileText, title: "Menu Failed", desc: error + ". You can try uploading again later." });
   } else {

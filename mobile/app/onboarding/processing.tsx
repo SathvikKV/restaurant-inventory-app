@@ -23,8 +23,8 @@ export default function ProcessingScreen() {
         const res = await uploadMenu(auth.token, imageUri, mimeType || "image/jpeg");
         
         router.replace({
-          pathname: "/onboarding/review-ingredients",
-          params: { ingredientsJson: JSON.stringify(res.ingredients || []) },
+          pathname: "/onboarding/review-recipes",
+          params: { recipesJson: JSON.stringify(res.recipes || []) },
         });
       } catch (e: any) {
         router.replace({ pathname: "/onboarding/success", params: { itemCount: "0", error: e.message || "Failed to process menu" } });

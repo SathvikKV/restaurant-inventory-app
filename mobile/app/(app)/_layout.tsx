@@ -101,6 +101,7 @@ export default function AppLayout() {
       <Tabs.Screen name="notifications" options={{ href: null }} />
       <Tabs.Screen name="scan-invoice" options={{ href: null }} />
       <Tabs.Screen name="recipes" options={{ href: null }} />
+      <Tabs.Screen name="recipe-detail" options={{ href: null }} />
     </Tabs>
   );
 }

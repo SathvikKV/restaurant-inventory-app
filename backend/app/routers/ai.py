@@ -41,14 +41,18 @@ class OCRResult(BaseModel):
     total_amount: Optional[float] = None
     confidence_notes: Optional[str] = None
 
-class MenuIngredient(BaseModel):
+class RecipeIngredientOut(BaseModel):
     name: str
     unit: str
-    category: str
+    quantity_per_serving: float
+    category: str  # one of the 9 valid categories
+
+class RecipeOut(BaseModel):
+    dish_name: str
+    ingredients: List[RecipeIngredientOut]
 
 class MenuOCRResult(BaseModel):
-    dishes: List[str]
-    ingredients: List[MenuIngredient]
+    recipes: List[RecipeOut]
 
 
 def _get_gemini():
@@ -206,10 +210,23 @@ async def ocr_menu(
 ):
     if not settings.gemini_api_key:
         return MenuOCRResult(
-            dishes=["Demo Dish 1", "Demo Dish 2"],
-            ingredients=[
-                MenuIngredient(name="Demo Ingredient 1", unit="kg", category="produce"),
-                MenuIngredient(name="Demo Ingredient 2", unit="litre", category="dairy"),
+            recipes=[
+                RecipeOut(
+                    dish_name="Demo Butter Chicken",
+                    ingredients=[
+                        RecipeIngredientOut(name="Chicken", unit="g", quantity_per_serving=250.0, category="proteins"),
+                        RecipeIngredientOut(name="Cream", unit="ml", quantity_per_serving=50.0, category="dairy"),
+                        RecipeIngredientOut(name="Tomato Puree", unit="g", quantity_per_serving=100.0, category="produce"),
+                    ]
+                ),
+                RecipeOut(
+                    dish_name="Demo Garlic Naan",
+                    ingredients=[
+                        RecipeIngredientOut(name="Maida", unit="g", quantity_per_serving=120.0, category="dry goods"),
+                        RecipeIngredientOut(name="Garlic", unit="g", quantity_per_serving=15.0, category="produce"),
+                        RecipeIngredientOut(name="Butter", unit="g", quantity_per_serving=20.0, category="dairy"),
+                    ]
+                ),
             ]
         )
 
@@ -225,12 +242,10 @@ async def ocr_menu(
 
         prompt = """You are analyzing a restaurant menu photo. 
 1. Identify each distinct dish name listed.
-2. For the dishes as a whole, infer a realistic, deduplicated list of core raw ingredients a restaurant would need to stock to prepare them — not exact recipe quantities, just the ingredient names.
-3. For each ingredient, assign: a sensible unit (kg, litre, piece, etc.) and a category, which MUST be exactly one of: produce, proteins, dairy, dry goods, beverages, bakery, packaging, cleaning, misc.
+2. For each dish, infer a realistic list of core ingredients and a reasonable per-serving quantity for each (e.g. "200" grams of rice for one plate of biryani) — these are estimates the owner will review and correct, not exact recipe science. Assign each ingredient a category, which MUST be exactly one of: produce, proteins, dairy, dry goods, beverages, bakery, packaging, cleaning, misc.
 
-Return strict JSON only, matching this shape:
-{"dishes": ["..."], "ingredients": [{"name": "...", "unit": "...", "category": "..."}]}
-Do not include quantities — the restaurant will set their own stock levels afterward."""
+Return strict JSON only:
+{"recipes": [{"dish_name": "...", "ingredients": [{"name": "...", "unit": "...", "quantity_per_serving": number, "category": "..."}]}]}"""
 
         response = await asyncio.to_thread(
             model.generate_content,
@@ -248,8 +263,7 @@ Do not include quantities — the restaurant will set their own stock levels aft
         data = json.loads(text.strip())
 
         return MenuOCRResult(
-            dishes=data.get("dishes", []),
-            ingredients=[MenuIngredient(**item) for item in data.get("ingredients", [])]
+            recipes=[RecipeOut(**item) for item in data.get("recipes", [])]
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Menu OCR failed: {str(e)}")
