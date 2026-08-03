@@ -32,7 +32,7 @@ def _map_user_response(user: User) -> dict:
     }
 
 
-@router.get("/", response_model=List[UserResponse], summary="List all users for the restaurant")
+@router.get("", response_model=List[UserResponse], summary="List all users for the restaurant")
 async def list_users(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
