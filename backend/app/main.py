@@ -1,9 +1,10 @@
 """
 Kosh Backend — FastAPI application entry point.
 """
+import time
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
@@ -43,6 +44,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+logger = logging.getLogger("app.requests")
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    logger.info(f"[REQUEST] {request.method} {request.url.path}")
+    try:
+        response = await call_next(request)
+        duration = (time.time() - start) * 1000
+        logger.info(f"[RESPONSE] {request.method} {request.url.path} -> {response.status_code} ({duration:.0f}ms)")
+        return response
+    except Exception as e:
+        duration = (time.time() - start) * 1000
+        logger.error(f"[REQUEST FAILED] {request.method} {request.url.path} after {duration:.0f}ms: {e}")
+        raise
 
 # ---------------------------------------------------------------------------
 # Routers
