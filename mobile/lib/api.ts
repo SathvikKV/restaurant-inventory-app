@@ -108,6 +108,12 @@ export async function getInventory(
   }[]>(`/inventory/${qs}`, { method: "GET" }, token);
 }
 
+export async function getInventoryItem(token: string, itemId: string) {
+  return request<{ id: string; name: string; quantity: number; unit: string; category: string }>(
+    `/inventory/${itemId}`, { method: "GET" }, token
+  );
+}
+
 export async function receiveStock(token: string, itemId: string, quantity: number, notes?: string) {
   return request(`/inventory/${itemId}/receive`, {
     method: "POST",
@@ -220,6 +226,10 @@ export async function saveMenuIngredients(token: string, ingredients: any[]): Pr
 
 export async function getPurchaseOrders(token: string) {
   return request<any[]>("/purchase-orders/", { method: "GET" }, token);
+}
+
+export async function getIssues(token: string) {
+  return request<any[]>("/issues/", { method: "GET" }, token);
 }
 
 export async function getAuditLog(token: string, limit = 50) {

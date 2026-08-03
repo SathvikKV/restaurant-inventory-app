@@ -16,27 +16,52 @@ from app.schemas.purchase_order import (
     PurchaseOrderResponse, PurchaseOrderCreate,
     PurchaseOrderApproveReject, ReceiveDeliveryRequest,
 )
+from app.services.s3_service import get_s3_presigned_url
 
 router = APIRouter()
 
 def _map_po_response(po_entry) -> dict:
-    items = po_entry.items or {}
+    is_list = isinstance(po_entry.items, list)
+    items = po_entry.items if isinstance(po_entry.items, dict) else {}
+
+    item_name = items.get("item_name", "Unknown Item")
+    total_amount = float(items.get("total_amount", 0)) if "total_amount" in items and items.get("total_amount") is not None else None
+    quantity = float(items.get("quantity", 0)) if "quantity" in items and items.get("quantity") is not None else None
+    unit = items.get("unit")
+    unit_price = float(items.get("unit_price", 0)) if "unit_price" in items and items.get("unit_price") is not None else None
+
+    if is_list:
+        line_items = [i for i in po_entry.items if isinstance(i, dict)]
+        total_amount = sum(float(i.get("total_price") or 0) for i in line_items)
+        if len(line_items) == 1:
+            item_name = line_items[0].get("item_name") or "Unknown Item"
+            quantity = float(line_items[0].get("quantity", 0)) if line_items[0].get("quantity") is not None else None
+            unit = line_items[0].get("unit")
+            unit_price = float(line_items[0].get("unit_price", 0)) if line_items[0].get("unit_price") is not None else None
+        else:
+            item_name = f"{len(line_items)} items" if line_items else "Multiple Items"
+            quantity = None  # doesn't make sense as a single number across mixed line items
+            unit = None
+
     return {
         "id": str(po_entry.id),
         "supplier_name": po_entry.supplier or "Unknown",
         "item_id": items.get("item_id", ""),
-        "item_name": items.get("item_name", "Unknown Item"),
-        "quantity": float(items.get("quantity", 0)),
-        "unit": items.get("unit", "kg"),
-        "unit_price": float(items.get("unit_price", 0)) if "unit_price" in items else None,
-        "total_amount": float(items.get("total_amount", 0)) if "total_amount" in items else None,
+        "item_name": item_name,
+        "quantity": quantity,
+        "unit": unit,
+        "unit_price": unit_price,
+        "total_amount": total_amount,
         "expected_date": items.get("expected_date"),
         "status": po_entry.status,
         "notes": items.get("notes"),
         "created_by": po_entry.recorded_by or "",
         "approved_by": items.get("approved_by"),
         "date_label": po_entry.created_at.strftime("%d %b %Y") if po_entry.created_at else "Unknown",
+        "image_url": get_s3_presigned_url(getattr(po_entry, "s3_key", None)),
+        "items": po_entry.items or [],
     }
+
 
 
 @router.get("/", response_model=List[PurchaseOrderResponse], summary="List purchase orders")

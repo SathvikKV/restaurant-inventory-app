@@ -23,24 +23,19 @@ async def food_cost_trend(
     schema = require_schema(user)
     models = get_tenant_models(schema)
     Purchase = models["purchases"]
-
     since = datetime.now(timezone.utc) - timedelta(days=days)
-    day_trunc = func.date_trunc('day', Purchase.created_at)
-    stmt = (
-        select(
-            day_trunc.label("day"),
-            func.count(Purchase.id).label("num_orders"),
-        )
-        .where(Purchase.created_at >= since)
-        .group_by(day_trunc)
-        .order_by(day_trunc)
-    )
+    stmt = select(Purchase).where(Purchase.created_at >= since)
     result = await db.execute(stmt)
-    rows = result.fetchall()
-    return [
-        {"day": row.day.strftime("%a %d %b") if row.day else "", "num_orders": row.num_orders}
-        for row in rows
-    ]
+    purchases = result.scalars().all()
+
+    daily_totals: dict[str, float] = {}
+    for p in purchases:
+        day_key = p.created_at.strftime("%a %d %b") if p.created_at else ""
+        line_items = p.items if isinstance(p.items, list) else []
+        day_total = sum(float(item.get("total_price") or 0) for item in line_items)
+        daily_totals[day_key] = daily_totals.get(day_key, 0) + day_total
+
+    return [{"day": day, "total_spend": round(total, 2)} for day, total in daily_totals.items()]
 
 
 @router.get("/top-items")
@@ -52,42 +47,16 @@ async def top_items(
     schema = user.get("schema")
     if not schema:
         raise HTTPException(status_code=400, detail="No schema")
-    
     models = get_tenant_models(schema)
     WastageEntry = models["wastage"]
-    InventoryItem = models["inventory"]
-    
-    # Get top wasted items by quantity
     stmt = (
-        select(
-            WastageEntry.item.label("item_id"),
-            func.sum(WastageEntry.qty).label("total_qty")
-        )
+        select(WastageEntry.item.label("item_name"), func.sum(WastageEntry.qty).label("total_qty"))
         .group_by(WastageEntry.item)
         .order_by(func.sum(WastageEntry.qty).desc())
         .limit(limit)
     )
-    
     result = await db.execute(stmt)
-    rows = result.all()
-    
-    # Look up item names
-    output = []
-    for row in rows:
-        item_name = row.item_id  # fallback to ID
-        try:
-            import uuid as _uuid
-            inv_item = await db.get(InventoryItem, _uuid.UUID(str(row.item_id)))
-            if inv_item:
-                item_name = inv_item.item
-        except Exception:
-            pass
-        output.append({
-            "item": item_name,
-            "total_qty": float(row.total_qty or 0)
-        })
-    
-    return output
+    return [{"item": row.item_name, "total_qty": float(row.total_qty or 0)} for row in result.all()]
 
 
 @router.get("/wastage-summary", summary="Wastage summary for a period")

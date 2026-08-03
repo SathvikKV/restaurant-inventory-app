@@ -2,7 +2,7 @@
 Purchase Order request/response schemas.
 """
 from pydantic import BaseModel
-from typing import Optional, Literal
+from typing import Optional, Literal, Any
 from datetime import date
 
 
@@ -14,8 +14,8 @@ class PurchaseOrderResponse(BaseModel):
     supplier_name: str
     item_id: str
     item_name: str
-    quantity: float
-    unit: str
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
     unit_price: Optional[float] = None
     total_amount: Optional[float] = None
     expected_date: Optional[date] = None
@@ -24,6 +24,9 @@ class PurchaseOrderResponse(BaseModel):
     created_by: str
     approved_by: Optional[str] = None
     date_label: str                       # human-friendly "Today" / "Yesterday" / ISO date
+    image_url: Optional[str] = None
+    items: Optional[Any] = None
+
 
 
 class PurchaseOrderCreate(BaseModel):

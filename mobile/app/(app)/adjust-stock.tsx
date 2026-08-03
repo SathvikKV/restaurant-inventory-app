@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { ChevronLeft, ChevronDown } from "lucide-react-native";
 import { useAuth } from "../../lib/auth-context";
-import { adjustStock } from "../../lib/api";
+import { adjustStock, getInventoryItem } from "../../lib/api";
 import { colors, PrimaryButton } from "../../components/ui";
 import { SelectItemSheet } from "../../components/SelectItemSheet";
 import { CategoryIcon } from "../../components/CategoryIcon";
@@ -30,8 +30,9 @@ export default function AdjustStockScreen() {
     if (!val) return;
     setLoading(true);
     try {
+      const fresh = await getInventoryItem(auth.token!, selectedItem.id);
       const delta = adjustType === "add" ? val : -val;
-      const newQty = Math.max(0, selectedItem.quantity + delta);
+      const newQty = Math.max(0, fresh.quantity + delta);
       await adjustStock(auth.token!, selectedItem.id, newQty, reason);
       Alert.alert("Done", "Stock adjusted successfully.");
       router.back();
