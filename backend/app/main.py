@@ -7,8 +7,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.config import get_settings
 from app.database import Base, engine
+from app.models.public import Tenant
+from app.services.tenant_registry import get_tenant_models
 from app.routers import auth, restaurants, inventory, purchase_orders, wastage, users, ai, reports, sync, recipes, issues, confirmations
 
 settings = get_settings()
@@ -23,6 +28,20 @@ async def lifespan(app: FastAPI):
     # Bootstrap public schema
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    try:
+        async with AsyncSession(engine) as session:
+            result = await session.execute(select(Tenant.schema_name))
+            schema_names = [row[0] for row in result.all()]
+
+        for schema_name in schema_names:
+            get_tenant_models(schema_name)  # registers this tenant's classes onto Base.metadata
+
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)  # now creates any newly-added tables for every existing tenant
+    except Exception as e:
+        logging.getLogger("app.startup").error(f"Self-heal tenant table sync failed (app will still boot): {e}")
+
     yield
 
 app = FastAPI(
