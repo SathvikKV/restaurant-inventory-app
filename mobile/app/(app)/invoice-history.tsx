@@ -59,9 +59,9 @@ export default function InvoiceHistoryScreen() {
             items.push({
               id: iss.id,
               type: "indent",
-              title: iss.destination || iss.outlet || "Stock Indent",
+              title: iss.destination || iss.outlet || "Stock KOT",
               subtitle: iss.items_summary || "Issued Stock",
-              amount_or_summary: iss.indent_number ? `Indent #${iss.indent_number}` : `#${iss.id?.slice(-4)}`,
+              amount_or_summary: iss.indent_number ? `KOT #${iss.indent_number}` : `#${iss.id?.slice(-4)}`,
               status: iss.status || "active",
               date_label: iss.date_label || "Recent",
               created_at: iss.created_at || "",
@@ -118,13 +118,13 @@ export default function InvoiceHistoryScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
-        <Text style={{ fontSize: 34, fontWeight: "800", color: colors.textMain, letterSpacing: -1, marginBottom: 16 }}>Invoices & Indents</Text>
+        <Text style={{ fontSize: 34, fontWeight: "800", color: colors.textMain, letterSpacing: -1, marginBottom: 16 }}>Invoices & KOTs</Text>
 
         {/* Filter Tabs */}
         <View style={{ flexDirection: "row", backgroundColor: "#EAECEF", padding: 4, borderRadius: 16, marginBottom: 24, alignSelf: "flex-start" }}>
           {(["all", "invoices", "indents"] as const).map((tab) => {
             const isSelected = activeTab === tab;
-            const label = tab === "all" ? "All Documents" : tab === "invoices" ? "Invoices" : "Indents";
+            const label = tab === "all" ? "All Documents" : tab === "invoices" ? "Invoices" : "KOTs";
             return (
               <TouchableOpacity
                 key={tab}

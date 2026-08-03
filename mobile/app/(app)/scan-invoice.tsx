@@ -8,7 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 import { saveOCRInvoice, uploadInvoice, OCRResult, LineItem } from "../../lib/api";
 import { colors, PrimaryButton } from "../../components/ui";
 
-type Stage = "capture" | "processing" | "review";
+type Stage = "capture" | "processing" | "review" | "recorded";
 
 export default function ScanInvoiceScreen() {
   const { auth } = useAuth();
@@ -18,18 +18,17 @@ export default function ScanInvoiceScreen() {
   const [saving, setSaving] = useState(false);
 
   async function handleConfirm() {
-    if (!result || !auth.token) return;
+    if (!result || !auth.token || stage === "recorded") return;
     setSaving(true);
     try {
       const res = await saveOCRInvoice(auth.token, result);
+      setStage("recorded");
       const msg = res.new_items_created.length > 0
         ? `Invoice recorded. New item(s) added: ${res.new_items_created.join(", ")}`
         : "Invoice recorded successfully.";
-      Alert.alert("Done", msg);
-      router.navigate("/(app)/home" as any);
+      Alert.alert("Done", msg, [{ text: "OK", onPress: () => router.replace("/(app)/home" as any) }]);
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to save invoice. Please try again.");
-    } finally {
       setSaving(false);
     }
   }
@@ -75,6 +74,19 @@ export default function ScanInvoiceScreen() {
       console.error("[ScanInvoice] Picker failed:", e);
       Alert.alert("Something went wrong", e.message || "Please try again.");
     }
+  }
+
+  if (stage === "recorded") {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: "#E8F0EC", alignItems: "center", justifyContent: "center", marginBottom: 16 }}>
+          <Check size={40} color={colors.primary} strokeWidth={2.5} />
+        </View>
+        <Text style={{ fontSize: 24, fontWeight: "800", color: colors.textMain, marginBottom: 8 }}>✅ Recorded</Text>
+        <Text style={{ fontSize: 15, color: colors.textMuted, textAlign: "center", fontWeight: "600", marginBottom: 32 }}>Invoice has been saved and inventory updated successfully.</Text>
+        <PrimaryButton label="Back to Home" onPress={() => router.replace("/(app)/home" as any)} />
+      </SafeAreaView>
+    );
   }
 
   if (stage === "capture") {

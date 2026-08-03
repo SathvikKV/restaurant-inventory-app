@@ -26,13 +26,13 @@ export function SelectItemSheet({
     if (!visible || !token) return;
     setLoading(true);
     getInventory(token)
-      .then(data => setItems(data.map(i => ({ id: i.id, name: i.item, unit: i.unit, quantity: i.current_qty, category: i.category, status: i.status }))))
+      .then(data => setItems(data.map(i => ({ id: i.id, name: (i as any).name || (i as any).item || "", unit: i.unit, quantity: (i as any).quantity ?? (i as any).current_qty ?? 0, category: i.category, status: i.status }))))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [visible, token]);
 
   const filtered = items.filter(i =>
-    i.name.toLowerCase().includes(search.toLowerCase())
+    (i.name || "").toLowerCase().includes(search.toLowerCase())
   );
 
   return (

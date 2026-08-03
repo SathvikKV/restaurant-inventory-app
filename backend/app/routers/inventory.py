@@ -109,7 +109,7 @@ async def list_inventory(
     models = get_tenant_models(schema)
     InventoryItem = models["inventory"]
 
-    stmt = select(InventoryItem)
+    stmt = select(InventoryItem).order_by(InventoryItem.category, InventoryItem.item)
     if category:
         stmt = stmt.where(InventoryItem.category == category)
     if q:

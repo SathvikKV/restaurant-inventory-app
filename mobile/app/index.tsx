@@ -53,7 +53,7 @@ function BrandLogo() {
         </View>
       </View>
       <Text className="text-[32px] font-bold tracking-tight text-kosh-primary">
-        MISE
+        SANQ
       </Text>
     </View>
   );

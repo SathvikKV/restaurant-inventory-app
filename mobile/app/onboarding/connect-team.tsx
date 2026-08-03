@@ -8,7 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 import { createStaffContact } from "../../lib/api";
 
 const ROLES = [
-  { title: "Kitchen Staff", tag: "Required", desc: "Send bills and indents", action: "Connect WhatsApp", primary: true, Icon: MessageCircle },
+  { title: "Kitchen Staff", tag: "Required", desc: "Send bills and KOTs", action: "Connect WhatsApp", primary: true, Icon: MessageCircle },
   { title: "Billing Person", tag: "Required", desc: "Share customer bills", action: "Connect WhatsApp", primary: true, Icon: MessageCircle },
   { title: "Manager", tag: "Optional", desc: "Approve and manage", action: "Invite on WhatsApp", primary: false, Icon: User },
 ];

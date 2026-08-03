@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Mise",
-    "slug": "mise-inventory",
+    "name": "SANQ",
+    "slug": "sanq-inventory",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "mise",
+    "scheme": "sanq",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash-icon.png",
@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.mise.inventory"
+      "bundleIdentifier": "com.sanq.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +22,7 @@
         "backgroundColor": "#F4F5F7",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.mise.inventory"
+      "package": "com.sanq.app"
     },
     "plugins": [
       "expo-router"

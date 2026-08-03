@@ -7,7 +7,7 @@ import { useAuth } from "../../lib/auth-context";
 import { getAuditLog } from "../../lib/api";
 import { colors } from "../../components/ui";
 
-const FILTERS = ["Bills", "Invoices", "Indents", "Adjustments", "Waste", "Issues"];
+const FILTERS = ["Bills", "Invoices", "KOTs", "Adjustments", "Waste", "Issues"];
 const TYPE_COLORS: Record<string, string> = {
   purchase: "#059669",
   invoice: "#059669",

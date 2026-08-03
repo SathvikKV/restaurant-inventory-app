@@ -8,11 +8,11 @@ import { clearAuth } from "../../lib/auth-store";
 import { getMe } from "../../lib/api";
 import { MiseLogo, colors } from "../../components/ui";
 
-const MENU_ITEMS = [
+const MENU_ITEMS: { icon: any; label: string; bg: string; color: string; badge?: string | null; route?: string }[] = [
   { icon: ChefHat, label: "Recipes", bg: "#FFF7ED", color: "#EA580C", route: "/(app)/recipes" },
   { icon: Users, label: "Team Management", bg: "#EFF6FF", color: "#2563EB", badge: null, route: "/(app)/team-management" },
   { icon: FileText, label: "Activity History", bg: "#ECFDF5", color: "#059669", route: "/(app)/activity-history" },
-  { icon: Receipt, label: "Invoices & Indents", bg: "#F5F3FF", color: "#7C3AED", route: "/(app)/invoice-history" },
+  { icon: Receipt, label: "Invoices & KOTs", bg: "#F5F3FF", color: "#7C3AED", route: "/(app)/invoice-history" },
   { icon: Store, label: "Workspace Settings", bg: "#F4F5F7", color: "#687076", route: "/(app)/workspace-settings" },
 ];
 
@@ -61,7 +61,12 @@ export default function MoreScreen() {
           {MENU_ITEMS.map((item, idx) => (
             <TouchableOpacity
               key={item.label}
-              onPress={() => item.route && router.push(item.route as any)}
+              onPress={() => {
+                if (item.label === "Team Management") {
+                  console.log("[More] auth.token before navigating to Team Management:", auth.token ? "present" : "MISSING");
+                }
+                item.route && router.push(item.route as any);
+              }}
               activeOpacity={0.7}
               style={{
                 paddingHorizontal: 24,

@@ -5,7 +5,7 @@ import { router } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { Bell, Scan, PenLine, ArrowDownToLine, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react-native";
 import { useAuth } from "../../lib/auth-context";
-import { getInventoryHealth, getInventory, getAuditLog, getMe } from "../../lib/api";
+import { getInventoryHealth, getInventory, getAuditLog, getMe, getTodaySummary } from "../../lib/api";
 import { MiseLogo, colors, Card } from "../../components/ui";
 
 type HealthData = { score: number; critical: number; low: number; healthy: number; total: number; label?: string };
@@ -19,17 +19,19 @@ export default function HomeScreen() {
   const [urgentItems, setUrgentItems] = useState<InventoryItem[]>([]);
   const [activities, setActivities] = useState<AuditEntry[]>([]);
   const [userName, setUserName] = useState<string>("");
+  const [todaySummary, setTodaySummary] = useState<{ purchases_total: number; consumption_total: number }>({ purchases_total: 0, consumption_total: 0 });
 
   useEffect(() => {
     if (!auth.token) return;
     (async () => {
       setLoading(true);
       try {
-        const [h, inv, audit, me] = await Promise.allSettled([
+        const [h, inv, audit, me, summ] = await Promise.allSettled([
           getInventoryHealth(auth.token!),
           getInventory(auth.token!),
           getAuditLog(auth.token!, 4),
           getMe(auth.token!),
+          getTodaySummary(auth.token!),
         ]);
         if (h.status === "fulfilled") setHealth(h.value);
         if (inv.status === "fulfilled") {
@@ -43,6 +45,9 @@ export default function HomeScreen() {
           setUserName(me.value.name.split(" ")[0]);
         } else {
           setUserName((auth.restaurantName || "Minerva Coffee Shop").split(" ")[0]);
+        }
+        if (summ.status === "fulfilled" && summ.value) {
+          setTodaySummary(summ.value);
         }
       } finally {
         setLoading(false);
@@ -298,19 +303,14 @@ export default function HomeScreen() {
             shadowRadius: 20,
             elevation: 2,
           }}>
-            <View style={{ gap: 10 }}>
+            <View style={{ gap: 10, flex: 1 }}>
               <Text style={{ fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 2, textTransform: "uppercase" }}>Purchases</Text>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>₹42.3k</Text>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>₹{todaySummary.purchases_total.toLocaleString("en-IN")}</Text>
             </View>
-            <View style={{ width: 1, height: 40, backgroundColor: colors.border }} />
-            <View style={{ gap: 10, alignItems: "center" }}>
+            <View style={{ width: 1, height: 40, backgroundColor: colors.border, marginHorizontal: 16 }} />
+            <View style={{ gap: 10, flex: 1, alignItems: "flex-end" }}>
               <Text style={{ fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 2, textTransform: "uppercase" }}>Consumption</Text>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>₹31.4k</Text>
-            </View>
-            <View style={{ width: 1, height: 40, backgroundColor: colors.border }} />
-            <View style={{ gap: 10, alignItems: "flex-end" }}>
-              <Text style={{ fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 2, textTransform: "uppercase" }}>Sales</Text>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: "#059669", letterSpacing: -0.3 }}>₹1.1L</Text>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>₹{todaySummary.consumption_total.toLocaleString("en-IN")}</Text>
             </View>
           </View>
         </View>

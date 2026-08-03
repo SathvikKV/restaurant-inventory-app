@@ -2,6 +2,7 @@
 Purchase Orders router.
 """
 import uuid
+import re
 from datetime import datetime, timezone, date
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -245,10 +246,24 @@ class SaveOCRInvoiceRequest(BaseModel):
     invoice_s3_key: Optional[str] = None
 
 
+def _normalize_name(name: str) -> str:
+    n = name.strip().lower()
+    n = re.sub(r"\(.*?\)|\[.*?\]", "", n)
+    n = " ".join(n.split())
+    words = []
+    for w in n.split():
+        if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+            w = w[:-1]
+        words.append(w)
+    return " ".join(words)
+
+
 def _best_match(name: str, existing_items: list) -> tuple[Optional[object], float]:
+    norm_name = _normalize_name(name)
     best, best_score = None, 0.0
     for item in existing_items:
-        score = SequenceMatcher(None, name.strip().lower(), item.item.strip().lower()).ratio()
+        norm_existing = _normalize_name(item.item)
+        score = SequenceMatcher(None, norm_name, norm_existing).ratio()
         if score > best_score:
             best, best_score = item, score
     return best, best_score
@@ -284,12 +299,19 @@ async def create_purchase_from_ocr(
     for line in body.line_items:
         best_item, score = _best_match(line.item_name, existing_items)
         if score >= 0.95 and best_item:
-            best_item.previous_qty = best_item.current_qty
-            best_item.current_qty += line.quantity
-            best_item.previous_updated = best_item.last_updated
-            best_item.last_updated = datetime.now(timezone.utc)
-            resolved_unit = best_item.unit
-            sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": resolved_unit})
+            if best_item.unit.strip().lower() != line.unit.strip().lower():
+                db.add(PendingConfirmation(
+                    extracted_name=line.item_name, candidate_name=best_item.item,
+                    score=score, quantity=line.quantity, unit=line.unit, source="app",
+                ))
+                resolved_unit = line.unit
+            else:
+                best_item.previous_qty = best_item.current_qty
+                best_item.current_qty += line.quantity
+                best_item.previous_updated = best_item.last_updated
+                best_item.last_updated = datetime.now(timezone.utc)
+                resolved_unit = best_item.unit
+                sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": resolved_unit})
         elif score >= 0.80 and best_item:
             db.add(PendingConfirmation(
                 extracted_name=line.item_name,

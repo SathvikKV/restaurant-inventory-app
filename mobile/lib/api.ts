@@ -49,7 +49,7 @@ export async function verifyOTP(phone: string, otp: string) {
 export async function createRestaurant(
   token: string,
   name: string,
-  city: string
+  city?: string
 ) {
   return request<{ id: string; name: string; schema_name: string }>(
     "/restaurants",
@@ -98,6 +98,8 @@ export async function getInventory(
   return request<{
     id: string;
     item: string;
+    name: string;
+    quantity: number;
     unit: string;
     current_qty: number;
     previous_qty: number;
@@ -137,7 +139,7 @@ export async function adjustStock(token: string, itemId: string, new_quantity: n
 
 // Wastage
 export async function logWastage(token: string, item: string, qty: number, unit: string, reason?: string) {
-  return request("/wastage", {
+  return request("/wastage/", {
     method: "POST",
     body: JSON.stringify({ item, qty, unit, reason }),
   }, token);
@@ -184,7 +186,7 @@ export async function uploadInvoice(token: string, imageUri: string, mimeType: s
 
 export async function saveOCRInvoice(token: string, ocrData: any) {
   return request<{ new_items_created: string[] }>(
-    "/purchases/from-ocr", { method: "POST", body: JSON.stringify(ocrData) }, token
+    "/purchase-orders/from-ocr", { method: "POST", body: JSON.stringify(ocrData) }, token
   );
 }
 
@@ -325,6 +327,40 @@ export async function updateRecipeIngredients(
   return request<{ status: string; message: string; count: number }>(
     `/recipes/${recipeId}/ingredients`,
     { method: "PUT", body: JSON.stringify({ ingredients }) },
+    token
+  );
+}
+
+export async function getTodaySummary(token: string) {
+  return request<{ purchases_total: number; consumption_total: number }>(
+    "/reports/today-summary",
+    { method: "GET" },
+    token
+  );
+}
+
+export type ConfirmationItem = {
+  id: string;
+  extracted_name: string;
+  candidate_name: string;
+  score: number;
+  quantity: number;
+  unit: string;
+  created_at: string;
+};
+
+export async function listConfirmations(token: string) {
+  return request<ConfirmationItem[]>(
+    "/confirmations",
+    { method: "GET" },
+    token
+  );
+}
+
+export async function resolveConfirmation(token: string, id: string, action: "same" | "different") {
+  return request<{ status: string }>(
+    `/confirmations/${id}/resolve`,
+    { method: "POST", body: JSON.stringify({ action }) },
     token
   );
 }

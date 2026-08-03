@@ -26,12 +26,14 @@ export default function TeamManagementScreen() {
   ];
 
   async function loadTeam() {
+    console.log("[TeamManagement] auth.token at loadTeam:", auth.token ? `${auth.token.substring(0, 20)}...` : "MISSING/FALSY");
     if (!auth.token) return;
     setLoading(true);
     try {
       const data = await listUsers(auth.token);
       setUsers(data);
     } catch (e: any) {
+      console.error("[TeamManagement] loadTeam failed:", e.message);
       Alert.alert("Error", e.message || "Failed to load team");
     } finally {
       setLoading(false);
