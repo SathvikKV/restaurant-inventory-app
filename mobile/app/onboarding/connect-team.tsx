@@ -90,22 +90,27 @@ export default function ConnectTeamScreen() {
                     ) : (
                       !showForm && (
                         <TouchableOpacity
-                          disabled={!isKitchen && role.primary}
+                          disabled={!isKitchen}
                           onPress={() => isKitchen ? setKitchenFormOpen(true) : null}
                           style={{
                             paddingVertical: 10,
                             borderRadius: 100,
-                            backgroundColor: role.primary && !isKitchen ? colors.card : "white",
-                            borderWidth: role.primary && !isKitchen ? 0 : 1.5,
+                            backgroundColor: !isKitchen ? colors.card : "white",
+                            borderWidth: !isKitchen ? 0 : 1.5,
                             borderColor: colors.primary,
                             alignItems: "center",
-                            opacity: role.primary && !isKitchen ? 0.6 : 1,
+                            opacity: !isKitchen ? 0.6 : 1,
                           }}>
-                          <Text style={{ fontSize: 13, fontWeight: "800", color: role.primary && !isKitchen ? colors.textMuted : colors.primary }}>
-                            {role.primary && !isKitchen ? "Coming soon" : role.action}
+                          <Text style={{ fontSize: 13, fontWeight: "800", color: !isKitchen ? colors.textMuted : colors.primary }}>
+                            {isKitchen ? role.action : "Coming soon"}
                           </Text>
                         </TouchableOpacity>
                       )
+                    )}
+                    {role.title === "Manager" && (
+                      <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: "600", marginTop: 8 }}>
+                        You can invite managers anytime from Team Management in Settings.
+                      </Text>
                     )}
                   </View>
                 </View>

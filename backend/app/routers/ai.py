@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import logging
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -11,6 +12,7 @@ from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models, require_schema
 from app.config import get_settings
 
+logger = logging.getLogger("app.routers.ai")
 router = APIRouter()
 settings = get_settings()
 
@@ -134,8 +136,17 @@ Answer the user's question concisely based on this inventory data."""
 
     try:
         full_prompt = system_context + f"\n\nUser: {body.message}"
-        response = await asyncio.to_thread(model.generate_content, full_prompt)
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(model.generate_content, full_prompt),
+                timeout=90.0
+            )
+        except asyncio.TimeoutError:
+            logger.error("Gemini call timed out after 90s")
+            raise HTTPException(status_code=504, detail="AI processing timed out. Please try again.")
         return ChatResponse(reply=response.text)
+    except HTTPException:
+        raise
     except Exception as e:
         return ChatResponse(reply=f"AI error: {str(e)}")
 
@@ -178,13 +189,20 @@ async def ocr_invoice(
   "total_amount": number or null
 }"""
 
-        response = await asyncio.to_thread(
-            model.generate_content,
-            [
-                prompt,
-                {"mime_type": file.content_type or "image/jpeg", "data": image_b64}
-            ]
-        )
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    model.generate_content,
+                    [
+                        prompt,
+                        {"mime_type": file.content_type or "image/jpeg", "data": image_b64}
+                    ]
+                ),
+                timeout=90.0
+            )
+        except asyncio.TimeoutError:
+            logger.error("Gemini call timed out after 90s")
+            raise HTTPException(status_code=504, detail="AI processing timed out. Please try again.")
 
         text = response.text.strip()
         if text.startswith("```"):
@@ -200,6 +218,8 @@ async def ocr_invoice(
             line_items=[OCRLineItem(**item) for item in data.get("line_items", [])],
             total_amount=data.get("total_amount"),
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
 
@@ -247,13 +267,20 @@ async def ocr_menu(
 Return strict JSON only:
 {"recipes": [{"dish_name": "...", "ingredients": [{"name": "...", "unit": "...", "quantity_per_serving": number, "category": "..."}]}]}"""
 
-        response = await asyncio.to_thread(
-            model.generate_content,
-            [
-                prompt,
-                {"mime_type": file.content_type or "image/jpeg", "data": image_b64}
-            ]
-        )
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    model.generate_content,
+                    [
+                        prompt,
+                        {"mime_type": file.content_type or "image/jpeg", "data": image_b64}
+                    ]
+                ),
+                timeout=90.0
+            )
+        except asyncio.TimeoutError:
+            logger.error("Gemini call timed out after 90s")
+            raise HTTPException(status_code=504, detail="AI processing timed out. Please try again.")
 
         text = response.text.strip()
         if text.startswith("```"):
@@ -265,6 +292,8 @@ Return strict JSON only:
         return MenuOCRResult(
             recipes=[RecipeOut(**item) for item in data.get("recipes", [])]
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Menu OCR failed: {str(e)}")
 

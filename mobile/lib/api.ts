@@ -253,7 +253,7 @@ export async function getFoodCostTrend(token: string, days = 7) {
 }
 
 export async function inviteUser(token: string, phone: string, name: string, role: "manager" | "owner"): Promise<any> {
-  const res = await fetch(`${API_URL}/users/invite`, {
+  const res = await fetch(`${BASE_URL}/users/invite`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -269,7 +269,7 @@ export async function inviteUser(token: string, phone: string, name: string, rol
 }
 
 export async function createStaffContact(token: string, phone: string, name: string, role_label: string): Promise<any> {
-  const res = await fetch(`${API_URL}/users/staff-contacts`, {
+  const res = await fetch(`${BASE_URL}/users/staff-contacts`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
