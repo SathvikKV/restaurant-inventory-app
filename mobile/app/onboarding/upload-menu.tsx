@@ -7,18 +7,32 @@ import { colors } from "../../components/ui";
 
 export default function UploadMenuScreen() {
   async function handlePick(useCamera: boolean) {
-    const permission = useCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert("Permission required", "Please grant permission to continue.");
-      return;
+    try {
+      const permission = useCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission required", "Please grant permission to continue.");
+        return;
+      }
+      const picked = useCamera
+        ? await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true })
+        : await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true, mediaTypes: ['images'] });
+
+      if (picked.canceled) {
+        console.log("[UploadMenu] Picker was cancelled by user");
+        return;
+      }
+      if (!picked.assets?.[0]) {
+        console.log("[UploadMenu] Picker returned no assets", picked);
+        Alert.alert("No photo selected", "Please try again.");
+        return;
+      }
+      router.push({ pathname: "/onboarding/processing", params: { imageUri: picked.assets[0].uri, mimeType: picked.assets[0].mimeType || "image/jpeg" } });
+    } catch (e: any) {
+      console.error("[UploadMenu] Picker failed:", e);
+      Alert.alert("Something went wrong", e.message || "Please try again.");
     }
-    const picked = useCamera
-      ? await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true })
-      : await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true, mediaTypes: ImagePicker.MediaTypeOptions.Images });
-    if (picked.canceled || !picked.assets?.[0]) return;
-    router.push({ pathname: "/onboarding/processing", params: { imageUri: picked.assets[0].uri, mimeType: picked.assets[0].mimeType || "image/jpeg" } });
   }
 
   return (

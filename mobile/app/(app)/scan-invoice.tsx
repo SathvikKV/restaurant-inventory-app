@@ -35,32 +35,45 @@ export default function ScanInvoiceScreen() {
   }
 
   async function pickImage(useCamera: boolean) {
-    const permission = useCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert("Permission required", "Please grant permission to continue.");
-      return;
-    }
-
-    const picked = useCamera
-      ? await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true })
-      : await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true, mediaTypes: ImagePicker.MediaTypeOptions.Images });
-
-    if (picked.canceled || !picked.assets?.[0]) return;
-
-    const asset = picked.assets[0];
-    setImageUri(asset.uri);
-    setStage("processing");
-
     try {
-      const ocr = await uploadInvoice(auth.token!, asset.uri, asset.mimeType || "image/jpeg");
-      setResult(ocr);
-      setStage("review");
+      const permission = useCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert("Permission required", "Please grant permission to continue.");
+        return;
+      }
+
+      const picked = useCamera
+        ? await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true })
+        : await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true, mediaTypes: ['images'] });
+
+      if (picked.canceled) {
+        console.log("[ScanInvoice] Picker was cancelled by user");
+        return;
+      }
+      if (!picked.assets?.[0]) {
+        console.log("[ScanInvoice] Picker returned no assets", picked);
+        Alert.alert("No photo selected", "Please try again.");
+        return;
+      }
+
+      const asset = picked.assets[0];
+      setImageUri(asset.uri);
+      setStage("processing");
+
+      try {
+        const ocr = await uploadInvoice(auth.token!, asset.uri, asset.mimeType || "image/jpeg");
+        setResult(ocr);
+        setStage("review");
+      } catch (e: any) {
+        Alert.alert("Error", e.message || "Failed to process invoice");
+        setStage("capture");
+      }
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to process invoice");
-      setStage("capture");
+      console.error("[ScanInvoice] Picker failed:", e);
+      Alert.alert("Something went wrong", e.message || "Please try again.");
     }
   }
 
