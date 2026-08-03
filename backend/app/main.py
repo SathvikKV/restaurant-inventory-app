@@ -56,7 +56,7 @@ async def log_requests(request: Request, call_next):
         duration = (time.time() - start) * 1000
         logger.info(f"[RESPONSE] {request.method} {request.url.path} -> {response.status_code} ({duration:.0f}ms)")
         return response
-    except Exception as e:
+    except BaseException as e:
         duration = (time.time() - start) * 1000
         logger.error(f"[REQUEST FAILED] {request.method} {request.url.path} after {duration:.0f}ms: {e}")
         raise
