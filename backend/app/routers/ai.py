@@ -139,10 +139,10 @@ Answer the user's question concisely based on this inventory data."""
         try:
             response = await asyncio.wait_for(
                 asyncio.to_thread(model.generate_content, full_prompt),
-                timeout=90.0
+                timeout=150.0
             )
         except asyncio.TimeoutError:
-            logger.error("Gemini call timed out after 90s")
+            logger.error("Gemini call timed out after 150s")
             raise HTTPException(status_code=504, detail="AI processing timed out. Please try again.")
         return ChatResponse(reply=response.text)
     except HTTPException:
@@ -198,10 +198,10 @@ async def ocr_invoice(
                         {"mime_type": file.content_type or "image/jpeg", "data": image_b64}
                     ]
                 ),
-                timeout=90.0
+                timeout=150.0
             )
         except asyncio.TimeoutError:
-            logger.error("Gemini call timed out after 90s")
+            logger.error("Gemini call timed out after 150s")
             raise HTTPException(status_code=504, detail="AI processing timed out. Please try again.")
 
         text = response.text.strip()
@@ -276,10 +276,10 @@ Return strict JSON only:
                         {"mime_type": file.content_type or "image/jpeg", "data": image_b64}
                     ]
                 ),
-                timeout=90.0
+                timeout=150.0
             )
         except asyncio.TimeoutError:
-            logger.error("Gemini call timed out after 90s")
+            logger.error("Gemini call timed out after 150s")
             raise HTTPException(status_code=504, detail="AI processing timed out. Please try again.")
 
         text = response.text.strip()
