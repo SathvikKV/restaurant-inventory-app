@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
 from typing import List, Optional
+from difflib import SequenceMatcher
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
@@ -244,6 +245,16 @@ class SaveOCRInvoiceRequest(BaseModel):
     invoice_s3_key: Optional[str] = None
 
 
+def _best_match(name: str, existing_items: list) -> tuple[Optional[object], float]:
+    best, best_score = None, 0.0
+    for item in existing_items:
+        score = SequenceMatcher(None, name.strip().lower(), item.item.strip().lower()).ratio()
+        if score > best_score:
+            best, best_score = item, score
+    return best, best_score
+
+
+
 @router.post("/from-ocr", summary="Save an OCR-extracted invoice, update inventory, and sync to Mise")
 async def create_purchase_from_ocr(
     body: SaveOCRInvoiceRequest,
@@ -256,6 +267,7 @@ async def create_purchase_from_ocr(
     models = get_tenant_models(schema)
     InventoryItem = models["inventory"]
     Purchase = models["purchases"]
+    PendingConfirmation = models["confirmations"]
 
     from app.models.public import User
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
@@ -266,29 +278,40 @@ async def create_purchase_from_ocr(
     new_items_created = []
     sync_calls = []
 
+    inv_res = await db.execute(select(InventoryItem))
+    existing_items = list(inv_res.scalars().all())
+
     for line in body.line_items:
-        result = await db.execute(
-            select(InventoryItem).where(func.lower(InventoryItem.item) == line.item_name.strip().lower())
-        )
-        item = result.scalar_one_or_none()
-        if item:
-            item.previous_qty = item.current_qty
-            item.current_qty += line.quantity
-            item.previous_updated = item.last_updated
-            item.last_updated = datetime.now(timezone.utc)
-            resolved_unit = item.unit
+        best_item, score = _best_match(line.item_name, existing_items)
+        if score >= 0.95 and best_item:
+            best_item.previous_qty = best_item.current_qty
+            best_item.current_qty += line.quantity
+            best_item.previous_updated = best_item.last_updated
+            best_item.last_updated = datetime.now(timezone.utc)
+            resolved_unit = best_item.unit
+            sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": resolved_unit})
+        elif score >= 0.80 and best_item:
+            db.add(PendingConfirmation(
+                extracted_name=line.item_name,
+                candidate_name=best_item.item,
+                score=score,
+                quantity=line.quantity,
+                unit=line.unit,
+                source="app",
+            ))
+            resolved_unit = line.unit
         else:
-            # Simplification for v1: auto-create unmatched items rather than
-            # building a fuzzy-match/confirmation UI right now (mirrors Mise's
-            # own zone-3 auto-create behavior for unmatched names).
-            db.add(InventoryItem(
+            new_inv = InventoryItem(
                 item=line.item_name, unit=line.unit, current_qty=line.quantity,
                 previous_qty=0.0, reorder_threshold=0.0, category="misc",
                 last_updated=datetime.now(timezone.utc),
-            ))
+            )
+            db.add(new_inv)
+            existing_items.append(new_inv)
             new_items_created.append(line.item_name)
             resolved_unit = line.unit
-        sync_calls.append({"item_name": line.item_name, "quantity": line.quantity, "unit": resolved_unit})
+            sync_calls.append({"item_name": line.item_name, "quantity": line.quantity, "unit": resolved_unit})
+
 
     db.add(Purchase(
         supplier=body.supplier_name or "Unknown",

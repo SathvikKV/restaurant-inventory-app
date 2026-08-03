@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.database import Base, engine
-from app.routers import auth, restaurants, inventory, purchase_orders, wastage, users, ai, reports, sync, recipes, issues
+from app.routers import auth, restaurants, inventory, purchase_orders, wastage, users, ai, reports, sync, recipes, issues, confirmations
 
 settings = get_settings()
 
@@ -77,6 +77,7 @@ app.include_router(reports.router,         prefix=f"{API_PREFIX}/reports",      
 app.include_router(sync.router,            prefix=f"{API_PREFIX}/sync",            tags=["Sync"])
 app.include_router(recipes.router,         prefix=f"{API_PREFIX}/recipes",         tags=["Recipes"])
 app.include_router(issues.router,          prefix=f"{API_PREFIX}/issues",          tags=["Issues"])
+app.include_router(confirmations.router,   prefix=f"{API_PREFIX}/confirmations",   tags=["Confirmations"])
 
 
 # ---------------------------------------------------------------------------
