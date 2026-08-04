@@ -93,7 +93,7 @@ export async function getInventory(
   const query = new URLSearchParams();
   if (params?.category) query.append("category", params.category);
   if (params?.status) query.append("status", params.status);
-  if (params?.search) query.append("search", params.search);
+  if (params?.search) query.append("q", params.search);
   const qs = query.toString() ? `?${query.toString()}` : "";
   return request<{
     id: string;
@@ -184,9 +184,27 @@ export async function uploadInvoice(token: string, imageUri: string, mimeType: s
   return res.json();
 }
 
-export async function saveOCRInvoice(token: string, ocrData: any) {
+export async function saveOCRInvoice(token: string, ocrData: any, resolutions?: Record<string, any>) {
   return request<{ new_items_created: string[] }>(
-    "/purchase-orders/from-ocr", { method: "POST", body: JSON.stringify(ocrData) }, token
+    "/purchase-orders/from-ocr", { method: "POST", body: JSON.stringify({ ...ocrData, resolutions }) }, token
+  );
+}
+
+export type PreviewMatchResult = {
+  item_name: string;
+  quantity: number;
+  unit: string;
+  match_status: "exact" | "needs_review" | "new";
+  candidate_id?: string;
+  candidate_name?: string;
+  score?: number;
+};
+
+export async function previewMatch(token: string, lineItems: LineItem[]): Promise<PreviewMatchResult[]> {
+  return request<PreviewMatchResult[]>(
+    "/purchase-orders/preview-match",
+    { method: "POST", body: JSON.stringify({ line_items: lineItems }) },
+    token
   );
 }
 

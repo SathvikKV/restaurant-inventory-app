@@ -2,6 +2,7 @@
 Recipes router — Bulk creation, inventory seeding, and recipe management CRUD.
 """
 import uuid
+import asyncio
 from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, HTTPException, Depends
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
+from app.services.embeddings import get_embedding
 from app.models.public import User, Tenant
 
 router = APIRouter()
@@ -96,6 +98,7 @@ async def bulk_create_recipes(
                 reorder_threshold=0.0,
                 category=ing["category"],
                 last_updated=datetime.now(timezone.utc),
+                embedding=await asyncio.to_thread(get_embedding, ing["name"]),
             )
         )
         created_items.append(ing["name"])

@@ -2,10 +2,10 @@ import { useState } from "react";
 import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import { X, Camera, ImagePlus, Check, Package } from "lucide-react-native";
+import { X, Camera, ImagePlus, Check, Package, HelpCircle } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../../lib/auth-context";
-import { saveOCRInvoice, uploadInvoice, OCRResult, LineItem } from "../../lib/api";
+import { saveOCRInvoice, uploadInvoice, previewMatch, OCRResult, LineItem, PreviewMatchResult } from "../../lib/api";
 import { colors, PrimaryButton } from "../../components/ui";
 
 type Stage = "capture" | "processing" | "review" | "recorded";
@@ -15,13 +15,18 @@ export default function ScanInvoiceScreen() {
   const [stage, setStage] = useState<Stage>("capture");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [result, setResult] = useState<OCRResult | null>(null);
+  const [previewResults, setPreviewResults] = useState<PreviewMatchResult[]>([]);
+  const [resolutions, setResolutions] = useState<Record<string, { same: boolean; target_item_id?: string }>>({});
   const [saving, setSaving] = useState(false);
 
+  const reviewNeeded = previewResults.filter((p) => p.match_status === "needs_review");
+  const isAllResolved = reviewNeeded.every((item) => resolutions[item.item_name] !== undefined);
+
   async function handleConfirm() {
-    if (!result || !auth.token || stage === "recorded") return;
+    if (!result || !auth.token || stage === "recorded" || !isAllResolved) return;
     setSaving(true);
     try {
-      const res = await saveOCRInvoice(auth.token, result);
+      const res = await saveOCRInvoice(auth.token, result, resolutions);
       setStage("recorded");
       const msg = res.new_items_created.length > 0
         ? `Invoice recorded. New item(s) added: ${res.new_items_created.join(", ")}`
@@ -65,6 +70,14 @@ export default function ScanInvoiceScreen() {
       try {
         const ocr = await uploadInvoice(auth.token!, asset.uri, asset.mimeType || "image/jpeg");
         setResult(ocr);
+        try {
+          const previews = await previewMatch(auth.token!, ocr.line_items || []);
+          setPreviewResults(previews);
+        } catch (err: any) {
+          console.error("Preview match failed, defaulting to empty:", err);
+          setPreviewResults([]);
+        }
+        setResolutions({});
         setStage("review");
       } catch (e: any) {
         Alert.alert("Error", e.message || "Failed to process invoice");
@@ -160,6 +173,52 @@ export default function ScanInvoiceScreen() {
           {result?.invoice_number && <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: "600", marginTop: 4 }}>Invoice #{result.invoice_number}</Text>}
         </View>
 
+        {/* Match Resolutions needed */}
+        {reviewNeeded.length > 0 && (
+          <View style={{ marginBottom: 24 }}>
+            <Text style={{ fontSize: 17, fontWeight: "800", color: "#A16207", marginBottom: 12, paddingHorizontal: 4, letterSpacing: -0.3 }}>
+              ⚠️ Action Required: Item Matches ({Object.keys(resolutions).filter(k => reviewNeeded.some(r => r.item_name === k)).length}/{reviewNeeded.length} Resolved)
+            </Text>
+            <View style={{ backgroundColor: "#FEFCE8", borderRadius: 24, borderWidth: 1, borderColor: "#FEF08A", overflow: "hidden" }}>
+              {reviewNeeded.map((conf, idx, arr) => {
+                const matchPct = conf.score ? Math.round(conf.score * 100) : 0;
+                const res = resolutions[conf.item_name];
+                return (
+                  <View key={conf.item_name} style={{ padding: 16, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: "#FEF08A" }}>
+                    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: "#FEF9C3", alignItems: "center", justifyContent: "center" }}>
+                        <HelpCircle size={20} color="#A16207" strokeWidth={2} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, marginBottom: 4 }}>
+                          Extracted: {conf.item_name} → Existing: {conf.candidate_name} ({matchPct}% match)
+                        </Text>
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: "#A16207" }}>
+                          {conf.quantity} {conf.unit}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      <TouchableOpacity
+                        onPress={() => setResolutions(prev => ({ ...prev, [conf.item_name]: { same: true, target_item_id: conf.candidate_id } }))}
+                        style={{ flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: res?.same === true ? colors.primary : colors.card, borderWidth: 1, borderColor: res?.same === true ? colors.primary : colors.border, alignItems: "center" }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: res?.same === true ? "white" : colors.textMain }}>✓ Same Item</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setResolutions(prev => ({ ...prev, [conf.item_name]: { same: false } }))}
+                        style={{ flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: res?.same === false ? "#EF4444" : colors.card, borderWidth: 1, borderColor: res?.same === false ? "#EF4444" : colors.border, alignItems: "center" }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: res?.same === false ? "white" : colors.textMain }}>✕ Different Item</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Line items */}
         <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, marginBottom: 12, paddingHorizontal: 4, letterSpacing: -0.3 }}>Extracted Items</Text>
         <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, overflow: "hidden", marginBottom: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
@@ -182,13 +241,13 @@ export default function ScanInvoiceScreen() {
       <View style={{ position: "absolute", bottom: 24, left: 24, right: 24 }}>
         <TouchableOpacity
           onPress={handleConfirm}
-          disabled={saving}
+          disabled={saving || !isAllResolved}
           activeOpacity={0.85}
-          style={{ backgroundColor: colors.primary, borderRadius: 24, paddingVertical: 18, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 4 }}
+          style={{ backgroundColor: !isAllResolved ? "#A1A1A9" : colors.primary, borderRadius: 24, paddingVertical: 18, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 8, shadowColor: !isAllResolved ? "#000" : colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 20, elevation: 4 }}
         >
           {saving ? <ActivityIndicator color="white" /> : <Check size={20} color="white" strokeWidth={2.5} />}
           <Text style={{ color: "white", fontSize: 17, fontWeight: "800", letterSpacing: -0.3 }}>
-            {saving ? "Recording..." : "Confirm & Record"}
+            {saving ? "Recording..." : !isAllResolved ? "Resolve Matches to Continue" : "Confirm & Record"}
           </Text>
         </TouchableOpacity>
       </View>

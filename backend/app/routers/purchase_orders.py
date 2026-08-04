@@ -3,17 +3,18 @@ Purchase Orders router.
 """
 import uuid
 import re
+import asyncio
 from datetime import datetime, timezone, date
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
-from typing import List, Optional
-from difflib import SequenceMatcher
+from typing import List, Optional, Dict, Literal
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
+from app.services.embeddings import get_embedding, cosine_similarity
 from app.schemas.purchase_order import (
     PurchaseOrderResponse, PurchaseOrderCreate,
     PurchaseOrderApproveReject, ReceiveDeliveryRequest,
@@ -244,30 +245,75 @@ class SaveOCRInvoiceRequest(BaseModel):
     line_items: List[OCRLineItemIn]
     total_amount: Optional[float] = None
     invoice_s3_key: Optional[str] = None
+    resolutions: Optional[Dict[str, dict]] = None
+
+class PreviewLineItem(BaseModel):
+    item_name: str
+    quantity: float
+    unit: str
+
+class PreviewMatchResult(BaseModel):
+    item_name: str
+    quantity: float
+    unit: str
+    match_status: Literal["exact", "needs_review", "new"]
+    candidate_id: Optional[str] = None
+    candidate_name: Optional[str] = None
+    score: Optional[float] = None
+
+class PreviewMatchRequest(BaseModel):
+    line_items: List[PreviewLineItem]
 
 
-def _normalize_name(name: str) -> str:
-    n = name.strip().lower()
-    n = re.sub(r"\(.*?\)|\[.*?\]", "", n)
-    n = " ".join(n.split())
-    words = []
-    for w in n.split():
-        if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
-            w = w[:-1]
-        words.append(w)
-    return " ".join(words)
-
-
-def _best_match(name: str, existing_items: list) -> tuple[Optional[object], float]:
-    norm_name = _normalize_name(name)
+async def _best_match_semantic(name: str, existing_items: list) -> tuple[Optional[object], float]:
+    name_embedding = await asyncio.to_thread(get_embedding, name)
     best, best_score = None, 0.0
     for item in existing_items:
-        norm_existing = _normalize_name(item.item)
-        score = SequenceMatcher(None, norm_name, norm_existing).ratio()
+        if not item.embedding:
+            item.embedding = await asyncio.to_thread(get_embedding, item.item)
+        score = cosine_similarity(name_embedding, item.embedding)
         if score > best_score:
             best, best_score = item, score
     return best, best_score
 
+
+@router.post("/preview-match", response_model=List[PreviewMatchResult], summary="Preview semantic matching for invoice items")
+async def preview_match(body: PreviewMatchRequest, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    schema = user.get("schema")
+    if not schema:
+        raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+    models = get_tenant_models(schema)
+    InventoryItem = models["inventory"]
+
+    inv_res = await db.execute(select(InventoryItem))
+    existing_items = list(inv_res.scalars().all())
+
+    results = []
+    for line in body.line_items:
+        best_item, score = await _best_match_semantic(line.item_name, existing_items)
+        if score >= 0.95 and best_item:
+            if best_item.unit.strip().lower() != line.unit.strip().lower():
+                results.append(PreviewMatchResult(
+                    item_name=line.item_name, quantity=line.quantity, unit=line.unit,
+                    match_status="needs_review", candidate_id=str(best_item.id), candidate_name=best_item.item, score=score
+                ))
+            else:
+                results.append(PreviewMatchResult(
+                    item_name=line.item_name, quantity=line.quantity, unit=line.unit,
+                    match_status="exact", candidate_id=str(best_item.id), candidate_name=best_item.item, score=score
+                ))
+        elif score >= 0.80 and best_item:
+            results.append(PreviewMatchResult(
+                item_name=line.item_name, quantity=line.quantity, unit=line.unit,
+                match_status="needs_review", candidate_id=str(best_item.id), candidate_name=best_item.item, score=score
+            ))
+        else:
+            results.append(PreviewMatchResult(
+                item_name=line.item_name, quantity=line.quantity, unit=line.unit,
+                match_status="new"
+            ))
+    await db.commit()
+    return results
 
 
 @router.post("/from-ocr", summary="Save an OCR-extracted invoice, update inventory, and sync to Mise")
@@ -296,14 +342,53 @@ async def create_purchase_from_ocr(
     inv_res = await db.execute(select(InventoryItem))
     existing_items = list(inv_res.scalars().all())
 
+    resolutions = body.resolutions or {}
     for line in body.line_items:
-        best_item, score = _best_match(line.item_name, existing_items)
+        res = resolutions.get(line.item_name)
+        if res is not None:
+            if res.get("same") is True:
+                target_id = res.get("target_item_id")
+                target_item = None
+                if target_id:
+                    for item in existing_items:
+                        if str(item.id) == str(target_id):
+                            target_item = item
+                            break
+                if target_item:
+                    target_item.previous_qty = target_item.current_qty
+                    target_item.current_qty += line.quantity
+                    target_item.previous_updated = target_item.last_updated
+                    target_item.last_updated = datetime.now(timezone.utc)
+                    sync_calls.append({"item_name": target_item.item, "quantity": line.quantity, "unit": target_item.unit})
+                continue
+            elif res.get("same") is False:
+                new_inv = InventoryItem(
+                    item=line.item_name, unit=line.unit, current_qty=line.quantity,
+                    previous_qty=0.0, reorder_threshold=0.0, category="misc",
+                    last_updated=datetime.now(timezone.utc),
+                    embedding=await asyncio.to_thread(get_embedding, line.item_name),
+                )
+                db.add(new_inv)
+                existing_items.append(new_inv)
+                new_items_created.append(line.item_name)
+                sync_calls.append({"item_name": line.item_name, "quantity": line.quantity, "unit": line.unit})
+                continue
+
+        best_item, score = await _best_match_semantic(line.item_name, existing_items)
         if score >= 0.95 and best_item:
             if best_item.unit.strip().lower() != line.unit.strip().lower():
-                db.add(PendingConfirmation(
-                    extracted_name=line.item_name, candidate_name=best_item.item,
-                    score=score, quantity=line.quantity, unit=line.unit, source="app",
-                ))
+                existing_pending = await db.execute(
+                    select(PendingConfirmation).where(
+                        PendingConfirmation.extracted_name == line.item_name,
+                        PendingConfirmation.candidate_name == best_item.item,
+                        PendingConfirmation.status == "pending",
+                    )
+                )
+                if not existing_pending.scalar_one_or_none():
+                    db.add(PendingConfirmation(
+                        extracted_name=line.item_name, candidate_name=best_item.item,
+                        score=score, quantity=line.quantity, unit=line.unit, source="app",
+                    ))
                 resolved_unit = line.unit
             else:
                 best_item.previous_qty = best_item.current_qty
@@ -313,27 +398,35 @@ async def create_purchase_from_ocr(
                 resolved_unit = best_item.unit
                 sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": resolved_unit})
         elif score >= 0.80 and best_item:
-            db.add(PendingConfirmation(
-                extracted_name=line.item_name,
-                candidate_name=best_item.item,
-                score=score,
-                quantity=line.quantity,
-                unit=line.unit,
-                source="app",
-            ))
+            existing_pending = await db.execute(
+                select(PendingConfirmation).where(
+                    PendingConfirmation.extracted_name == line.item_name,
+                    PendingConfirmation.candidate_name == best_item.item,
+                    PendingConfirmation.status == "pending",
+                )
+            )
+            if not existing_pending.scalar_one_or_none():
+                db.add(PendingConfirmation(
+                    extracted_name=line.item_name,
+                    candidate_name=best_item.item,
+                    score=score,
+                    quantity=line.quantity,
+                    unit=line.unit,
+                    source="app",
+                ))
             resolved_unit = line.unit
         else:
             new_inv = InventoryItem(
                 item=line.item_name, unit=line.unit, current_qty=line.quantity,
                 previous_qty=0.0, reorder_threshold=0.0, category="misc",
                 last_updated=datetime.now(timezone.utc),
+                embedding=await asyncio.to_thread(get_embedding, line.item_name),
             )
             db.add(new_inv)
             existing_items.append(new_inv)
             new_items_created.append(line.item_name)
             resolved_unit = line.unit
             sync_calls.append({"item_name": line.item_name, "quantity": line.quantity, "unit": resolved_unit})
-
 
     db.add(Purchase(
         supplier=body.supplier_name or "Unknown",

@@ -231,6 +231,11 @@ export function SearchField({
         placeholderTextColor={colors.textMuted}
         style={{ flex: 1, fontSize: 15, fontWeight: "700", color: colors.textMain, padding: 0 }}
       />
+      {value?.length > 0 && (
+        <TouchableOpacity onPress={() => onChange("")} style={{ padding: 4 }}>
+          <X size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

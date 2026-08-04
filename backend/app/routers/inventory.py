@@ -2,6 +2,7 @@
 Inventory router — CRUD + stock movements.
 """
 import uuid
+import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from typing import List, Optional
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
+from app.services.embeddings import get_embedding
 from app.schemas.inventory import (
     InventoryItemResponse, InventoryItemCreate, InventoryItemUpdate,
     StockAdjustRequest, StockIssueRequest, StockReceiveRequest,
@@ -51,6 +53,21 @@ def _map_item_response(db_item) -> dict:
         "price_history": []
     }
 
+@router.post("/backfill-embeddings")
+async def backfill_embeddings(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    schema = user.get("schema")
+    if not schema:
+        raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+    models = get_tenant_models(schema)
+    InventoryItem = models["inventory"]
+    result = await db.execute(select(InventoryItem).where(InventoryItem.embedding.is_(None)))
+    items = result.scalars().all()
+    for item in items:
+        item.embedding = await asyncio.to_thread(get_embedding, item.item)
+    await db.commit()
+    return {"backfilled": len(items)}
+
+
 @router.post("/bulk-create", summary="Bulk-create inventory items from reviewed menu extraction")
 async def bulk_create_inventory(body: BulkIngredientCreate, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     schema = user.get("schema")
@@ -81,7 +98,8 @@ async def bulk_create_inventory(body: BulkIngredientCreate, user: dict = Depends
             previous_qty=0.0, 
             reorder_threshold=0.0, 
             category=ing.category, 
-            last_updated=datetime.now(timezone.utc)
+            last_updated=datetime.now(timezone.utc),
+            embedding=await asyncio.to_thread(get_embedding, ing.name)
         )
         db.add(item)
         created.append(ing.name)
@@ -161,7 +179,8 @@ async def create_inventory_item(
         unit=body.unit,
         category=body.category,
         reorder_threshold=body.reorder_threshold,
-        current_qty=0.0
+        current_qty=0.0,
+        embedding=await asyncio.to_thread(get_embedding, body.item)
     )
     db.add(new_item)
     await db.commit()

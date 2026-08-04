@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+from typing import Optional, List
 from sqlalchemy import String, DateTime, Float, Integer, Boolean, Text, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
@@ -29,6 +30,7 @@ def make_tenant_models(schema: str) -> dict:
         last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
         previous_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
         sheets_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+        embedding: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
     class Purchase(Base):
         __tablename__ = "purchases"

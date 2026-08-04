@@ -2,6 +2,7 @@
 Confirmations router — Zone 2 fuzzy match resolution.
 """
 import uuid
+import asyncio
 from datetime import datetime, timezone
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models, require_schema
+from app.services.embeddings import get_embedding
 
 router = APIRouter()
 
@@ -47,7 +49,8 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
             item.last_updated = datetime.now(timezone.utc)
     else:
         db.add(InventoryItem(item=confirmation.extracted_name, unit=confirmation.unit, current_qty=confirmation.quantity,
-                              previous_qty=0.0, reorder_threshold=0.0, category="misc", last_updated=datetime.now(timezone.utc)))
+                              previous_qty=0.0, reorder_threshold=0.0, category="misc", last_updated=datetime.now(timezone.utc),
+                              embedding=await asyncio.to_thread(get_embedding, confirmation.extracted_name)))
 
     confirmation.status = "resolved"
     await db.commit()

@@ -55,7 +55,7 @@ export default function InventoryScreen() {
     setLoading(true);
     try {
       const params: Record<string, string> = {};
-      if (q) params.q = q;
+      if (q) params.search = q;
       const data = await getInventory(auth.token, params);
       setItems(data);
     } catch {}

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Header
@@ -6,6 +7,7 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from app.database import get_db
 from app.config import get_settings
+from app.services.embeddings import get_embedding
 
 router = APIRouter()
 settings = get_settings()
@@ -102,6 +104,7 @@ async def ingest_sync(
                 category=sync_item.category,
                 last_updated=datetime.now(timezone.utc),
                 sheets_synced_at=datetime.now(timezone.utc),
+                embedding=await asyncio.to_thread(get_embedding, sync_item.item),
             )
             db.add(new_item)
 
