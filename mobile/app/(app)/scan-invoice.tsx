@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { X, Camera, ImagePlus, Check, Package, HelpCircle } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../../lib/auth-context";
@@ -18,6 +18,18 @@ export default function ScanInvoiceScreen() {
   const [previewResults, setPreviewResults] = useState<PreviewMatchResult[]>([]);
   const [resolutions, setResolutions] = useState<Record<string, { same: boolean; target_item_id?: string }>>({});
   const [saving, setSaving] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      setStage("capture");
+      setImageUri(null);
+      setResult(null);
+      setPreviewResults([]);
+      setResolutions({});
+      setSaving(false);
+      return () => {};
+    }, [])
+  );
 
   const reviewNeeded = previewResults.filter((p) => p.match_status === "needs_review");
   const isAllResolved = reviewNeeded.every((item) => resolutions[item.item_name] !== undefined);

@@ -252,7 +252,6 @@ async def ocr_menu(
 
     try:
         import google.generativeai as genai
-        import asyncio
         genai.configure(api_key=settings.gemini_api_key)
         model = genai.GenerativeModel("gemini-2.5-flash")
 

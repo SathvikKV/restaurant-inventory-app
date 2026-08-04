@@ -105,7 +105,6 @@ async def bulk_create_recipes(
 
     await db.commit()
 
-    import asyncio
     from app.services.mise_writeback import push_to_mise
 
     for ing in seen_ingredients.values():

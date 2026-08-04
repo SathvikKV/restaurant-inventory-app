@@ -438,7 +438,6 @@ async def create_purchase_from_ocr(
     ))
     await db.commit()
 
-    import asyncio
     from app.services.mise_writeback import push_to_mise
     for call in sync_calls:
         asyncio.create_task(push_to_mise(

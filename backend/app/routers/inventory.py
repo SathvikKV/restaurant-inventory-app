@@ -86,7 +86,6 @@ async def bulk_create_inventory(body: BulkIngredientCreate, user: dict = Depends
     if not recorded_by_name:
         recorded_by_name = user["user_id"]
 
-    import asyncio
     from app.services.mise_writeback import push_to_mise
 
     created = []
@@ -270,7 +269,6 @@ async def receive_stock(
 
     await db.commit()
     
-    import asyncio
     from app.services.mise_writeback import push_to_mise
     asyncio.create_task(push_to_mise(
         action="receive", item_name=item.item, quantity=body.quantity,
@@ -324,7 +322,6 @@ async def issue_stock(
     
     await db.commit()
     
-    import asyncio
     from app.services.mise_writeback import push_to_mise
     asyncio.create_task(push_to_mise(
         action="issue", item_name=item.item, quantity=body.quantity,
@@ -367,7 +364,6 @@ async def adjust_stock(
 
     await db.commit()
     
-    import asyncio
     from app.services.mise_writeback import push_to_mise
     asyncio.create_task(push_to_mise(
         action="adjust", item_name=item.item, quantity=body.new_quantity,

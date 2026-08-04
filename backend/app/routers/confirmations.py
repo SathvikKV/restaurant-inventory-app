@@ -64,7 +64,6 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
     if not recorded_by_name:
         recorded_by_name = user["user_id"]
 
-    import asyncio
     from app.services.mise_writeback import push_to_mise
 
     if body.action == "same" and item:
