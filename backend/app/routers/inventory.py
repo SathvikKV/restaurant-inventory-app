@@ -16,6 +16,7 @@ from app.services.tenant_registry import get_tenant_models
 from app.services.embeddings import get_embedding
 from app.services.transaction_log import log_transaction
 from app.services.s3_service import get_s3_presigned_url
+from app.services.units import normalize_to_base, to_display_pair
 from app.schemas.inventory import (
     InventoryItemResponse, InventoryItemCreate, InventoryItemUpdate,
     StockAdjustRequest, StockIssueRequest, StockReceiveRequest,
@@ -93,9 +94,10 @@ async def bulk_create_inventory(body: BulkIngredientCreate, user: dict = Depends
 
     created = []
     for ing in body.ingredients:
+        _, norm_unit = normalize_to_base(0.0, ing.unit)
         item = InventoryItem(
             item=ing.name, 
-            unit=ing.unit, 
+            unit=norm_unit, 
             current_qty=0.0, 
             previous_qty=0.0, 
             reorder_threshold=0.0, 
@@ -106,9 +108,10 @@ async def bulk_create_inventory(body: BulkIngredientCreate, user: dict = Depends
         db.add(item)
         created.append(ing.name)
         
+        disp_qty, disp_unit = to_display_pair(0.0, norm_unit)
         asyncio.create_task(push_to_mise(
-            action="adjust", item_name=ing.name, quantity=0.0,
-            unit=ing.unit, recorded_by=recorded_by_name, reason="Initial Menu Extraction",
+            action="adjust", item_name=ing.name, quantity=disp_qty,
+            unit=disp_unit, recorded_by=recorded_by_name, reason="Initial Menu Extraction",
             spreadsheet_id=spreadsheet_id
         ))
         
@@ -176,9 +179,10 @@ async def create_inventory_item(
     models = get_tenant_models(schema)
     InventoryItem = models["inventory"]
 
+    _, norm_unit = normalize_to_base(0.0, body.unit)
     new_item = InventoryItem(
         item=body.item,
-        unit=body.unit,
+        unit=norm_unit,
         category=body.category,
         reorder_threshold=body.reorder_threshold,
         current_qty=0.0,
@@ -265,22 +269,25 @@ async def receive_stock(
     if not recorded_by_name:
         recorded_by_name = user["user_id"]
 
+    norm_qty, norm_unit = normalize_to_base(body.quantity, item.unit)
+    item.unit = norm_unit
     item.previous_qty = item.current_qty
-    item.current_qty += body.quantity
+    item.current_qty += norm_qty
     item.previous_updated = item.last_updated
     item.last_updated = datetime.now(timezone.utc)
 
     await log_transaction(
         db, models, item_id=item.id, item_name=item.item, action="receive",
-        quantity_delta=body.quantity, resulting_qty=item.current_qty, unit=item.unit,
+        quantity_delta=norm_qty, resulting_qty=item.current_qty, unit=norm_unit,
         recorded_by=recorded_by_name
     )
     await db.commit()
     
     from app.services.mise_writeback import push_to_mise
+    disp_qty, disp_unit = to_display_pair(norm_qty, norm_unit)
     asyncio.create_task(push_to_mise(
-        action="receive", item_name=item.item, quantity=body.quantity,
-        unit=item.unit, recorded_by=recorded_by_name, supplier="Kosh App",
+        action="receive", item_name=item.item, quantity=disp_qty,
+        unit=disp_unit, recorded_by=recorded_by_name, supplier="Kosh App",
         spreadsheet_id=spreadsheet_id
     ))
     return {"message": f"Received {body.quantity} units for item {item.item}"}
@@ -316,29 +323,32 @@ async def issue_stock(
     if not recorded_by_name:
         recorded_by_name = user["user_id"]
 
+    norm_qty, norm_unit = normalize_to_base(body.quantity, item.unit)
+    item.unit = norm_unit
     item.previous_qty = item.current_qty
-    item.current_qty -= body.quantity
+    item.current_qty -= norm_qty
     item.previous_updated = item.last_updated
     item.last_updated = datetime.now(timezone.utc)
 
     new_issue = Issue(
         outlet=body.destination,
-        items={item.item: body.quantity},
+        items={item.item: norm_qty},
         recorded_by=recorded_by_name,
     )
     db.add(new_issue)
     
     await log_transaction(
         db, models, item_id=item.id, item_name=item.item, action="issue",
-        quantity_delta=-body.quantity, resulting_qty=item.current_qty, unit=item.unit,
+        quantity_delta=-norm_qty, resulting_qty=item.current_qty, unit=norm_unit,
         recorded_by=recorded_by_name, notes=body.destination
     )
     await db.commit()
     
     from app.services.mise_writeback import push_to_mise
+    disp_qty, disp_unit = to_display_pair(norm_qty, norm_unit)
     asyncio.create_task(push_to_mise(
-        action="issue", item_name=item.item, quantity=body.quantity,
-        unit=item.unit, recorded_by=recorded_by_name, destination=body.destination,
+        action="issue", item_name=item.item, quantity=disp_qty,
+        unit=disp_unit, recorded_by=recorded_by_name, destination=body.destination,
         spreadsheet_id=spreadsheet_id
     ))
     return {"message": f"Issued {body.quantity} units of item {item.item} to {body.destination}"}
@@ -370,23 +380,26 @@ async def adjust_stock(
     if not recorded_by_name:
         recorded_by_name = user["user_id"]
 
+    norm_qty, norm_unit = normalize_to_base(body.new_quantity, item.unit)
+    item.unit = norm_unit
     item.previous_qty = item.current_qty
-    item.current_qty = body.new_quantity
+    item.current_qty = norm_qty
     item.previous_updated = item.last_updated
     item.last_updated = datetime.now(timezone.utc)
 
-    delta = body.new_quantity - item.previous_qty
+    delta = norm_qty - item.previous_qty
     await log_transaction(
         db, models, item_id=item.id, item_name=item.item, action="adjust",
-        quantity_delta=delta, resulting_qty=item.current_qty, unit=item.unit,
+        quantity_delta=delta, resulting_qty=item.current_qty, unit=norm_unit,
         recorded_by=recorded_by_name, notes=body.reason
     )
     await db.commit()
     
     from app.services.mise_writeback import push_to_mise
+    disp_qty, disp_unit = to_display_pair(norm_qty, norm_unit)
     asyncio.create_task(push_to_mise(
-        action="adjust", item_name=item.item, quantity=body.new_quantity,
-        unit=item.unit, recorded_by=recorded_by_name, reason=body.reason,
+        action="adjust", item_name=item.item, quantity=disp_qty,
+        unit=disp_unit, recorded_by=recorded_by_name, reason=body.reason,
         spreadsheet_id=spreadsheet_id
     ))
     return {"message": f"Adjusted item {item.item} to {body.new_quantity}"}

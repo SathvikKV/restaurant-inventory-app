@@ -12,6 +12,7 @@ from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
 from app.services.transaction_log import log_transaction
+from app.services.units import normalize_to_base
 from app.schemas.common import WastageRecordCreate, WastageRecordResponse
 
 router = APIRouter()
@@ -76,25 +77,27 @@ async def create_wastage(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    if item.current_qty < body.quantity:
+    norm_qty, norm_unit = normalize_to_base(body.quantity, item.unit)
+    if item.current_qty < norm_qty:
         raise HTTPException(status_code=400, detail="Insufficient stock to waste")
 
+    item.unit = norm_unit
     item.previous_qty = item.current_qty
-    item.current_qty -= body.quantity
+    item.current_qty -= norm_qty
     item.previous_updated = item.last_updated
     item.last_updated = datetime.now(timezone.utc)
 
     wastage = WastageEntry(
         item=str(item.id),
-        qty=body.quantity,
-        unit=item.unit,
+        qty=norm_qty,
+        unit=norm_unit,
         reason=body.reason,
         recorded_by=user.get("user_id")
     )
     db.add(wastage)
     await log_transaction(
         db, models, item_id=item.id, item_name=item.item, action="waste",
-        quantity_delta=-body.quantity, resulting_qty=item.current_qty, unit=item.unit,
+        quantity_delta=-norm_qty, resulting_qty=item.current_qty, unit=norm_unit,
         recorded_by=user.get("user_id", "Unknown"), notes=body.reason
     )
     await db.commit()

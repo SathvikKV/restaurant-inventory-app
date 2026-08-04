@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Svg, { Path } from "react-native-svg";
@@ -7,6 +7,7 @@ import { Bell, Scan, PenLine, ArrowDownToLine, AlertTriangle, ChevronDown, Chevr
 import { useAuth } from "../../lib/auth-context";
 import { getInventoryHealth, getInventory, getAuditLog, getMe, getTodaySummary } from "../../lib/api";
 import { MiseLogo, colors, Card } from "../../components/ui";
+import { formatForDisplay } from "../../lib/units";
 
 type HealthData = { score: number; critical: number; low: number; healthy: number; total: number; label?: string };
 type InventoryItem = { id: string; name: string; unit: string; quantity: number; status: string };
@@ -20,39 +21,48 @@ export default function HomeScreen() {
   const [activities, setActivities] = useState<AuditEntry[]>([]);
   const [userName, setUserName] = useState<string>("");
   const [todaySummary, setTodaySummary] = useState<{ purchases_total: number; consumption_total: number }>({ purchases_total: 0, consumption_total: 0 });
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchHomeData = async (isRefresh = false) => {
+    if (!auth.token) return;
+    if (!isRefresh) setLoading(true);
+    try {
+      const [h, inv, audit, me, summ] = await Promise.allSettled([
+        getInventoryHealth(auth.token!),
+        getInventory(auth.token!),
+        getAuditLog(auth.token!, 4),
+        getMe(auth.token!),
+        getTodaySummary(auth.token!),
+      ]);
+      if (h.status === "fulfilled") setHealth(h.value);
+      if (inv.status === "fulfilled") {
+        setUrgentItems(inv.value.filter(i => {
+          const s = i.status.toLowerCase();
+          return s === "critical" || s === "out_of_stock" || s === "out of stock";
+        }));
+      }
+      if (audit.status === "fulfilled") setActivities(audit.value.entries || []);
+      if (me.status === "fulfilled" && me.value?.name) {
+        setUserName(me.value.name.split(" ")[0]);
+      } else {
+        setUserName((auth.restaurantName || "Minerva Coffee Shop").split(" ")[0]);
+      }
+      if (summ.status === "fulfilled" && summ.value) {
+        setTodaySummary(summ.value);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchHomeData(true);
+  };
 
   useEffect(() => {
-    if (!auth.token) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const [h, inv, audit, me, summ] = await Promise.allSettled([
-          getInventoryHealth(auth.token!),
-          getInventory(auth.token!),
-          getAuditLog(auth.token!, 4),
-          getMe(auth.token!),
-          getTodaySummary(auth.token!),
-        ]);
-        if (h.status === "fulfilled") setHealth(h.value);
-        if (inv.status === "fulfilled") {
-          setUrgentItems(inv.value.filter(i => {
-            const s = i.status.toLowerCase();
-            return s === "critical" || s === "out_of_stock" || s === "out of stock";
-          }));
-        }
-        if (audit.status === "fulfilled") setActivities(audit.value.entries || []);
-        if (me.status === "fulfilled" && me.value?.name) {
-          setUserName(me.value.name.split(" ")[0]);
-        } else {
-          setUserName((auth.restaurantName || "Minerva Coffee Shop").split(" ")[0]);
-        }
-        if (summ.status === "fulfilled" && summ.value) {
-          setTodaySummary(summ.value);
-        }
-      } finally {
-        setLoading(false);
-      }
-    })();
+    fetchHomeData();
   }, [auth.token]);
 
   const restaurantName = auth.restaurantName || "Minerva Coffee Shop";
@@ -86,6 +96,7 @@ export default function HomeScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
 
         {/* ── Header ── */}
@@ -183,7 +194,7 @@ export default function HomeScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, letterSpacing: -0.2, marginBottom: 3 }}>{item.name}</Text>
                         <Text style={{ fontSize: 13, fontWeight: "700", color: isOut ? "#DC2626" : "#EA580C" }}>
-                          {isOut ? "Currently out of stock" : `${parseFloat(item.quantity.toFixed(2))} ${item.unit} remaining`}
+                          {isOut ? "Currently out of stock" : `${formatForDisplay(item.quantity, item.unit)} remaining`}
                         </Text>
                       </View>
                     </View>

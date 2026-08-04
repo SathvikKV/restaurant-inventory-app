@@ -14,6 +14,7 @@ from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
 from app.services.embeddings import get_embedding
+from app.services.units import normalize_to_base, to_display_pair
 from app.models.public import User, Tenant
 
 router = APIRouter()
@@ -74,18 +75,19 @@ async def bulk_create_recipes(
         db.add(recipe)
         await db.flush()  # get recipe.id before adding children
         for ing in r.ingredients:
+            norm_qty, norm_unit = normalize_to_base(ing.quantity_per_serving, ing.unit)
             db.add(
                 RecipeIngredient(
                     recipe_id=recipe.id,
                     item_name=ing.name,
-                    unit=ing.unit,
-                    quantity_per_serving=ing.quantity_per_serving,
+                    unit=norm_unit,
+                    quantity_per_serving=norm_qty,
                     category=ing.category,
                 )
             )
             key = ing.name.strip().lower()
             if key not in seen_ingredients:
-                seen_ingredients[key] = {"name": ing.name, "unit": ing.unit, "category": ing.category}
+                seen_ingredients[key] = {"name": ing.name, "unit": norm_unit, "category": ing.category}
 
     created_items = []
     for ing in seen_ingredients.values():
@@ -108,12 +110,13 @@ async def bulk_create_recipes(
     from app.services.mise_writeback import push_to_mise
 
     for ing in seen_ingredients.values():
+        disp_qty, disp_unit = to_display_pair(0.0, ing["unit"])
         asyncio.create_task(
             push_to_mise(
                 action="adjust",
                 item_name=ing["name"],
-                quantity=0.0,
-                unit=ing["unit"],
+                quantity=disp_qty,
+                unit=disp_unit,
                 recorded_by=recorded_by_name,
                 spreadsheet_id=spreadsheet_id,
             )

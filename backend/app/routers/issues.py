@@ -15,6 +15,7 @@ from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
 from app.services.s3_service import get_s3_presigned_url
 from app.services.transaction_log import log_transaction
+from app.services.units import normalize_to_base, to_display_pair
 from app.routers.purchase_orders import _best_match_semantic
 
 router = APIRouter()
@@ -144,6 +145,9 @@ async def create_issue_from_ocr(
     inv_res = await db.execute(select(InventoryItem))
     existing_items = list(inv_res.scalars().all())
 
+    for line in body.line_items:
+        line.quantity, line.unit = normalize_to_base(line.quantity, line.unit)
+
     issue_record = Issue(
         section=body.section or "Kitchen",
         outlet="Kitchen",
@@ -192,7 +196,8 @@ async def create_issue_from_ocr(
             continue
 
         best_item, score = await _best_match_semantic(line.item_name, existing_items)
-        if score >= 0.95 and best_item and best_item.unit.strip().lower() == line.unit.strip().lower():
+        _, best_norm_unit = normalize_to_base(0.0, best_item.unit) if best_item else (0.0, "")
+        if score >= 0.95 and best_item and best_norm_unit.strip().lower() == line.unit.strip().lower():
             if best_item.current_qty < line.quantity:
                 denied.append({"item": line.item_name, "reason": "Insufficient stock", "available": best_item.current_qty})
                 continue
@@ -227,9 +232,10 @@ async def create_issue_from_ocr(
 
     from app.services.mise_writeback import push_to_mise
     for call in sync_calls:
+        disp_qty, disp_unit = to_display_pair(call["quantity"], call["unit"])
         asyncio.create_task(push_to_mise(
-            action="issue", item_name=call["item_name"], quantity=call["quantity"],
-            unit=call["unit"], recorded_by=recorded_by_name, destination=body.section or "Kitchen",
+            action="issue", item_name=call["item_name"], quantity=disp_qty,
+            unit=disp_unit, recorded_by=recorded_by_name, destination=body.section or "Kitchen",
             spreadsheet_id=spreadsheet_id
         ))
 

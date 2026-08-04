@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { ChevronLeft, MoreVertical, AlertTriangle, PenLine, ArrowDownToLine, Package, CheckCircle, Maximize2 } from "lucide-react-native";
@@ -7,6 +7,7 @@ import { colors } from "../../components/ui";
 import { useAuth } from "../../lib/auth-context";
 import { getItemHistory, TransactionHistoryItem } from "../../lib/api";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
+import { formatForDisplay, toDisplayPair } from "../../lib/units";
 
 const TYPE_COLORS: Record<string, string> = {
   receive: "#059669",
@@ -36,28 +37,28 @@ function getHistoryIcon(action: string) {
 }
 
 function formatHistoryEntry(tx: TransactionHistoryItem) {
-  const qty = Math.abs(tx.quantity_delta);
-  const unit = tx.unit;
-  const nowQty = `${tx.resulting_qty} ${unit}`;
+  const absDisplay = formatForDisplay(Math.abs(tx.quantity_delta), tx.unit);
+  const rawDisplay = formatForDisplay(tx.quantity_delta, tx.unit);
+  const nowQty = formatForDisplay(tx.resulting_qty, tx.unit);
   const dateStr = tx.created_at ? new Date(tx.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Today";
 
   if (tx.action === "receive" || tx.action === "invoice") {
     const label = tx.action === "invoice" ? "Invoice" : "Receive";
-    return `Received ${qty} ${unit} — ${label} — ${dateStr} → now ${nowQty}`;
+    return `Received ${absDisplay} — ${label} — ${dateStr} → now ${nowQty}`;
   } else if (tx.action === "issue") {
     const dest = tx.notes || "Kitchen";
-    return `Issued ${qty} ${unit} to ${dest} — ${dateStr} → now ${nowQty}`;
+    return `Issued ${absDisplay} to ${dest} — ${dateStr} → now ${nowQty}`;
   } else if (tx.action === "adjust") {
-    const sign = tx.quantity_delta >= 0 ? "+" : "-";
+    const sign = tx.quantity_delta >= 0 ? "+" : "";
     const reasonStr = tx.notes ? ` (${tx.notes})` : "";
-    return `Adjusted by ${sign}${qty} ${unit}${reasonStr} — ${dateStr} → now ${nowQty}`;
+    return `Adjusted by ${sign}${rawDisplay}${reasonStr} — ${dateStr} → now ${nowQty}`;
   } else if (tx.action === "waste") {
     const reasonStr = tx.notes ? ` (${tx.notes})` : "";
-    return `Logged as waste — ${qty} ${unit}${reasonStr} — ${dateStr} → now ${nowQty}`;
+    return `Logged as waste — ${absDisplay}${reasonStr} — ${dateStr} → now ${nowQty}`;
   } else if (tx.action === "confirmation_resolved") {
-    return `Resolved match — ${qty} ${unit} — ${dateStr} → now ${nowQty}`;
+    return `Resolved match — ${absDisplay} — ${dateStr} → now ${nowQty}`;
   } else {
-    return `${tx.action}: ${tx.quantity_delta} ${unit} — ${dateStr} → now ${nowQty}`;
+    return `${tx.action}: ${rawDisplay} — ${dateStr} → now ${nowQty}`;
   }
 }
 
@@ -87,19 +88,29 @@ export default function ItemDetailScreen() {
   const [history, setHistory] = useState<TransactionHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchHistory = async (isRefresh = false) => {
+    if (!auth.token || !item.id) return;
+    if (!isRefresh) setLoadingHistory(true);
+    try {
+      const data = await getItemHistory(auth.token!, item.id);
+      setHistory(data || []);
+    } catch (e) {
+      console.error("Failed to load item history:", e);
+    } finally {
+      setLoadingHistory(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchHistory(true);
+  };
 
   useEffect(() => {
-    if (!auth.token || !item.id) return;
-    (async () => {
-      try {
-        const data = await getItemHistory(auth.token!, item.id);
-        setHistory(data || []);
-      } catch (e) {
-        console.error("Failed to load item history:", e);
-      } finally {
-        setLoadingHistory(false);
-      }
-    })();
+    fetchHistory();
   }, [auth.token, item.id]);
 
   const isOut = item.quantity === 0;
@@ -167,6 +178,7 @@ export default function ItemDetailScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 120 }}
         onScrollBeginDrag={() => setMenuOpen(false)}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         {/* Item identity */}
         <View style={{ alignItems: "center", gap: 20, marginBottom: 32 }}>
@@ -242,15 +254,29 @@ export default function ItemDetailScreen() {
             <View style={{ width: "50%", paddingBottom: 24 }}>
               <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Current Stock</Text>
               <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-                <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>{parseFloat(item.quantity.toFixed(2))}</Text>
-                <Text style={{ fontSize: 16, fontWeight: "600", color: colors.textMuted }}>{item.unit}</Text>
+                {(() => {
+                  const [dispQty, dispUnit] = toDisplayPair(item.quantity, item.unit);
+                  return (
+                    <>
+                      <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>{parseFloat(dispQty.toFixed(2))}</Text>
+                      <Text style={{ fontSize: 16, fontWeight: "600", color: colors.textMuted }}>{dispUnit}</Text>
+                    </>
+                  );
+                })()}
               </View>
             </View>
             <View style={{ width: "50%", paddingBottom: 24 }}>
               <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Min Buffer</Text>
               <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-                <Text style={{ fontSize: 28, fontWeight: "800", color: "#F97316", letterSpacing: -0.5 }}>{parseFloat((item.suggested_purchase || 0).toFixed(2))}</Text>
-                <Text style={{ fontSize: 16, fontWeight: "600", color: "#FDBA74" }}>{item.unit}</Text>
+                {(() => {
+                  const [bufQty, bufUnit] = toDisplayPair(item.suggested_purchase || 0, item.unit);
+                  return (
+                    <>
+                      <Text style={{ fontSize: 28, fontWeight: "800", color: "#F97316", letterSpacing: -0.5 }}>{parseFloat(bufQty.toFixed(2))}</Text>
+                      <Text style={{ fontSize: 16, fontWeight: "600", color: "#FDBA74" }}>{bufUnit}</Text>
+                    </>
+                  );
+                })()}
               </View>
             </View>
             <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: 24 }} />

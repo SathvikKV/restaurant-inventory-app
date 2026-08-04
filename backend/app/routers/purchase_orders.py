@@ -21,6 +21,7 @@ from app.schemas.purchase_order import (
     PurchaseOrderApproveReject, ReceiveDeliveryRequest,
 )
 from app.services.s3_service import get_s3_presigned_url
+from app.services.units import normalize_to_base, to_display_pair
 
 router = APIRouter()
 
@@ -204,8 +205,10 @@ async def receive_purchase_order(
     if item_id_str:
         item = await db.get(InventoryItem, uuid.UUID(item_id_str))
         if item:
+            norm_qty, norm_unit = normalize_to_base(body.received_quantity, item.unit)
+            item.unit = norm_unit
             item.previous_qty = item.current_qty
-            item.current_qty += body.received_quantity
+            item.current_qty += norm_qty
             item.previous_updated = item.last_updated
             item.last_updated = datetime.now(timezone.utc)
             
@@ -291,9 +294,11 @@ async def preview_match(body: PreviewMatchRequest, user: dict = Depends(get_curr
 
     results = []
     for line in body.line_items:
+        line.quantity, line.unit = normalize_to_base(line.quantity, line.unit)
         best_item, score = await _best_match_semantic(line.item_name, existing_items)
         if score >= 0.95 and best_item:
-            if best_item.unit.strip().lower() != line.unit.strip().lower():
+            _, item_norm_unit = normalize_to_base(0.0, best_item.unit)
+            if item_norm_unit.strip().lower() != line.unit.strip().lower():
                 results.append(PreviewMatchResult(
                     item_name=line.item_name, quantity=line.quantity, unit=line.unit,
                     match_status="needs_review", candidate_id=str(best_item.id), candidate_name=best_item.item, score=score
@@ -357,6 +362,7 @@ async def create_purchase_from_ocr(
 
     resolutions = body.resolutions or {}
     for line in body.line_items:
+        line.quantity, line.unit = normalize_to_base(line.quantity, line.unit)
         res = resolutions.get(line.item_name)
         if res is not None:
             if res.get("same") is True:
@@ -400,7 +406,8 @@ async def create_purchase_from_ocr(
 
         best_item, score = await _best_match_semantic(line.item_name, existing_items)
         if score >= 0.95 and best_item:
-            if best_item.unit.strip().lower() != line.unit.strip().lower():
+            _, item_norm_unit = normalize_to_base(0.0, best_item.unit)
+            if item_norm_unit.strip().lower() != line.unit.strip().lower():
                 existing_pending = await db.execute(
                     select(PendingConfirmation).where(
                         PendingConfirmation.extracted_name == line.item_name,
@@ -467,9 +474,10 @@ async def create_purchase_from_ocr(
 
     from app.services.mise_writeback import push_to_mise
     for call in sync_calls:
+        disp_qty, disp_unit = to_display_pair(call["quantity"], call["unit"])
         asyncio.create_task(push_to_mise(
-            action="receive", item_name=call["item_name"], quantity=call["quantity"],
-            unit=call["unit"], recorded_by=recorded_by_name, supplier=body.supplier_name or "Kosh App"
+            action="receive", item_name=call["item_name"], quantity=disp_qty,
+            unit=disp_unit, recorded_by=recorded_by_name, supplier=body.supplier_name or "Kosh App"
         ))
 
     return {"status": "ok", "new_items_created": new_items_created}

@@ -7,6 +7,7 @@ import { useAuth } from "../../lib/auth-context";
 import { getPurchaseOrders, getIssues } from "../../lib/api";
 import { colors } from "../../components/ui";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
+import { formatForDisplay } from "../../lib/units";
 
 type DocumentItem = {
   id: string;
@@ -45,7 +46,7 @@ export default function InvoiceHistoryScreen() {
               id: inv.id,
               type: "invoice",
               title: inv.supplier_name || "Unknown Supplier",
-              subtitle: inv.item_name ? (inv.quantity != null && inv.unit != null ? `${inv.item_name} (${inv.quantity} ${inv.unit})` : inv.item_name) : "Invoice Order",
+              subtitle: inv.item_name ? (inv.quantity != null && inv.unit != null ? `${inv.item_name} (${formatForDisplay(inv.quantity, inv.unit)})` : inv.item_name) : "Invoice Order",
               amount_or_summary: inv.total_amount ? `₹${inv.total_amount}` : `#${inv.id?.slice(-4)}`,
               status: inv.status || "active",
               date_label: inv.date_label || "Recent",

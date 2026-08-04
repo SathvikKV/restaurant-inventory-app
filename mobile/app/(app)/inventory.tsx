@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { ChevronDown, ChevronRight, Package } from "lucide-react-native";
@@ -7,6 +7,7 @@ import { useAuth } from "../../lib/auth-context";
 import { getInventory } from "../../lib/api";
 import { MiseLogo, SearchField, colors } from "../../components/ui";
 import { CategoryIcon } from "../../components/CategoryIcon";
+import { toDisplayPair } from "../../lib/units";
 
 type APIItem = {
   id: string;
@@ -48,18 +49,24 @@ export default function InventoryScreen() {
   const [catOpen, setCatOpen] = useState(false);
   const [items, setItems] = useState<APIItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchInventory = async (q: string) => {
+  const fetchInventory = async (q: string, isRefresh = false) => {
     if (!auth.token) return;
-    setLoading(true);
+    if (!isRefresh) setLoading(true);
     try {
       const params: Record<string, string> = {};
       if (q) params.search = q;
       const data = await getInventory(auth.token, params);
       setItems(data);
     } catch {}
-    finally { setLoading(false); }
+    finally { setLoading(false); setRefreshing(false); }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchInventory(search, true);
   };
 
   useEffect(() => { if (auth.token) fetchInventory(""); }, [auth.token]);
@@ -94,7 +101,11 @@ export default function InventoryScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 40 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 8, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      >
 
         {/* Header */}
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
@@ -277,8 +288,15 @@ export default function InventoryScreen() {
                   <View>
                     <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Current Stock</Text>
                     <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-                      <Text style={{ fontSize: 22, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>{parseFloat(item.quantity.toFixed(2))}</Text>
-                      <Text style={{ fontSize: 15, fontWeight: "600", color: colors.textMuted }}>{item.unit}</Text>
+                      {(() => {
+                        const [dispQty, dispUnit] = toDisplayPair(item.quantity, item.unit);
+                        return (
+                          <>
+                            <Text style={{ fontSize: 22, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>{parseFloat(dispQty.toFixed(2))}</Text>
+                            <Text style={{ fontSize: 15, fontWeight: "600", color: colors.textMuted }}>{dispUnit}</Text>
+                          </>
+                        );
+                      })()}
                     </View>
                   </View>
                   <ChevronRight size={20} color={colors.textMuted} strokeWidth={2} />

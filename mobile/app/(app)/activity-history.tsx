@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { ChevronLeft, Maximize2 } from "lucide-react-native";
@@ -7,6 +7,7 @@ import { useAuth } from "../../lib/auth-context";
 import { getAllActivity, ActivityFeedItem } from "../../lib/api";
 import { colors } from "../../components/ui";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
+import { formatForDisplay } from "../../lib/units";
 
 interface FilterTab {
   label: string;
@@ -31,27 +32,27 @@ const ACTION_COLORS: Record<string, string> = {
 };
 
 function formatActivityDescription(act: ActivityFeedItem) {
-  const qty = Math.abs(act.quantity_delta);
-  const unit = act.unit;
+  const absDisplay = formatForDisplay(Math.abs(act.quantity_delta), act.unit);
+  const rawDisplay = formatForDisplay(act.quantity_delta, act.unit);
   const name = act.item_name;
 
   if (act.action === "receive" || act.action === "invoice") {
     const label = act.action === "invoice" ? "(Invoice)" : "";
-    return `Received ${qty} ${unit} of ${name} ${label}`.trim();
+    return `Received ${absDisplay} of ${name} ${label}`.trim();
   } else if (act.action === "issue") {
     const dest = act.notes || "Kitchen";
-    return `Issued ${qty} ${unit} of ${name} to ${dest}`;
+    return `Issued ${absDisplay} of ${name} to ${dest}`;
   } else if (act.action === "adjust") {
     const sign = act.quantity_delta >= 0 ? "+" : "";
     const reason = act.notes ? ` (${act.notes})` : "";
-    return `Adjusted ${name} by ${sign}${act.quantity_delta} ${unit}${reason}`;
+    return `Adjusted ${name} by ${sign}${rawDisplay}${reason}`;
   } else if (act.action === "waste") {
     const reason = act.notes ? ` (${act.notes})` : "";
-    return `Logged waste: ${qty} ${unit} of ${name}${reason}`;
+    return `Logged waste: ${absDisplay} of ${name}${reason}`;
   } else if (act.action === "confirmation_resolved") {
-    return `Resolved match: received ${qty} ${unit} of ${name}`;
+    return `Resolved match: received ${absDisplay} of ${name}`;
   } else {
-    return `${act.action}: ${act.quantity_delta} ${unit} of ${name}`;
+    return `${act.action}: ${rawDisplay} of ${name}`;
   }
 }
 
@@ -61,26 +62,35 @@ export default function ActivityHistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState<string>("All");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchActivity = async (isRefresh = false) => {
+    if (!auth.token) return;
+    if (!isRefresh) setLoading(true);
+    try {
+      const tab = FILTER_TABS.find((t) => t.label === selectedTab);
+      const actionFilter = tab && tab.actions.length === 1 ? tab.actions[0] : undefined;
+      const result = await getAllActivity(auth.token!, actionFilter, 100);
+      let data = result || [];
+      if (tab && tab.actions.length > 1) {
+        data = data.filter((item) => tab.actions.includes(item.action));
+      }
+      setEntries(data);
+    } catch (e) {
+      console.error("Failed to load activity:", e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchActivity(true);
+  };
 
   useEffect(() => {
-    if (!auth.token) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const tab = FILTER_TABS.find((t) => t.label === selectedTab);
-        const actionFilter = tab && tab.actions.length === 1 ? tab.actions[0] : undefined;
-        const result = await getAllActivity(auth.token!, actionFilter, 100);
-        let data = result || [];
-        if (tab && tab.actions.length > 1) {
-          data = data.filter((item) => tab.actions.includes(item.action));
-        }
-        setEntries(data);
-      } catch (e) {
-        console.error("Failed to load activity:", e);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    fetchActivity();
   }, [auth.token, selectedTab]);
 
   return (
@@ -98,7 +108,11 @@ export default function ActivityHistoryScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      >
         <Text style={{ fontSize: 36, fontWeight: "800", color: colors.textMain, letterSpacing: -1, marginBottom: 24 }}>Activity</Text>
 
         {/* Filter chips */}
@@ -154,7 +168,7 @@ export default function ActivityHistoryScreen() {
                       {formatActivityDescription(act)}
                     </Text>
                     <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
-                      {dateStr ? `${dateStr} at ${timeStr}` : timeStr} • {act.recorded_by || "Staff"} → now {act.resulting_qty} {act.unit}
+                      {dateStr ? `${dateStr} at ${timeStr}` : timeStr} • {act.recorded_by || "Staff"} → now {formatForDisplay(act.resulting_qty, act.unit)}
                     </Text>
                   </View>
                   {act.image_url && (

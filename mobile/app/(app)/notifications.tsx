@@ -6,6 +6,7 @@ import { ChevronLeft, AlertCircle, AlertTriangle, Package, HelpCircle } from "lu
 import { useAuth } from "../../lib/auth-context";
 import { getInventory, listConfirmations, resolveConfirmation, ConfirmationItem } from "../../lib/api";
 import { colors } from "../../components/ui";
+import { formatForDisplay } from "../../lib/units";
 
 export default function NotificationsScreen() {
   const { auth } = useAuth();
@@ -52,7 +53,7 @@ export default function NotificationsScreen() {
     const matchPct = Math.round(item.score * 100);
     Alert.alert(
       "Resolve Item Match",
-      `Extracted: "${item.extracted_name}"\nExisting: "${item.candidate_name}" (${matchPct}% match)\nQuantity: ${item.quantity} ${item.unit}\n\nIs this the same inventory item?`,
+      `Extracted: "${item.extracted_name}"\nExisting: "${item.candidate_name}" (${matchPct}% match)\nQuantity: ${formatForDisplay(item.quantity, item.unit)}\n\nIs this the same inventory item?`,
       [
         { text: "Same item", onPress: () => performResolve(item.id, "same") },
         { text: "Different item", onPress: () => performResolve(item.id, "different"), style: "destructive" },
@@ -110,7 +111,7 @@ export default function NotificationsScreen() {
                             Extracted: {conf.extracted_name} → Existing: {conf.candidate_name} ({matchPct}% match)
                           </Text>
                           <Text style={{ fontSize: 13, fontWeight: "700", color: "#A16207" }}>
-                            {conf.quantity} {conf.unit} • Tap to resolve
+                            {formatForDisplay(conf.quantity, conf.unit)} • Tap to resolve
                           </Text>
                         </View>
                         {isResolving && <ActivityIndicator size="small" color={colors.primary} />}
@@ -145,7 +146,7 @@ export default function NotificationsScreen() {
                             {item.name} {isOut ? "requires replenishment" : "running low"}
                           </Text>
                           <Text style={{ fontSize: 13, fontWeight: "700", color: isOut ? "#DC2626" : "#EA580C" }}>
-                            {isOut ? "Currently out of stock" : `${parseFloat(item.quantity.toFixed(2))} ${item.unit} remaining`}
+                            {isOut ? "Currently out of stock" : `${formatForDisplay(item.quantity, item.unit)} remaining`}
                           </Text>
                         </View>
                       </TouchableOpacity>

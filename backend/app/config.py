@@ -37,7 +37,8 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     aws_region: str = "ap-south-1"
-    s3_bucket_name: str = "kosh-invoices"
+    s3_region: str = "us-east-1"
+    s3_bucket_name: str = "mise-invoices"
     s3_prefix: str = "invoices"
 
     # Gemini (AI recommendations / OCR)
