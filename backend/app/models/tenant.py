@@ -137,6 +137,7 @@ def make_tenant_models(schema: str) -> dict:
         resulting_qty: Mapped[float] = mapped_column(Float, nullable=False)
         unit: Mapped[str] = mapped_column(String(50), nullable=False)
         source_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+        notes: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
         recorded_by: Mapped[str] = mapped_column(String(255), nullable=False)
         created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

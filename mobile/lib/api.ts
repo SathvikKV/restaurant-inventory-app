@@ -124,6 +124,7 @@ export interface TransactionHistoryItem {
   unit: string;
   recorded_by: string;
   source_reference: string | null;
+  notes?: string | null;
   image_url?: string | null;
   created_at: string;
 }
@@ -319,6 +320,27 @@ export async function getIssues(token: string) {
 
 export async function getAuditLog(token: string, limit = 50) {
   return request<{ entries: { id: string; type: string; description: string; recorded_by: string; created_at: string }[]; total: number }>(`/reports/audit-log?limit=${limit}`, { method: "GET" }, token);
+}
+
+export interface ActivityFeedItem {
+  id: string;
+  item_name: string;
+  action: string;
+  quantity_delta: number;
+  resulting_qty: number;
+  unit: string;
+  notes?: string | null;
+  recorded_by: string;
+  image_url?: string | null;
+  created_at: string;
+}
+
+export async function getAllActivity(token: string, action?: string, limit = 100, offset = 0) {
+  let url = `/inventory/activity/all?limit=${limit}&offset=${offset}`;
+  if (action && action !== "all" && action !== "All") {
+    url += `&action=${encodeURIComponent(action)}`;
+  }
+  return request<ActivityFeedItem[]>(url, { method: "GET" }, token);
 }
 
 export async function getWastageSummary(token: string, days = 7) {

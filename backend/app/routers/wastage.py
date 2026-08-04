@@ -95,7 +95,7 @@ async def create_wastage(
     await log_transaction(
         db, models, item_id=item.id, item_name=item.item, action="waste",
         quantity_delta=-body.quantity, resulting_qty=item.current_qty, unit=item.unit,
-        recorded_by=user.get("user_id", "Unknown"), source_reference=body.reason
+        recorded_by=user.get("user_id", "Unknown"), notes=body.reason
     )
     await db.commit()
     await db.refresh(wastage)

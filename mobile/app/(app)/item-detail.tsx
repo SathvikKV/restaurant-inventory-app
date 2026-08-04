@@ -45,13 +45,15 @@ function formatHistoryEntry(tx: TransactionHistoryItem) {
     const label = tx.action === "invoice" ? "Invoice" : "Receive";
     return `Received ${qty} ${unit} — ${label} — ${dateStr} → now ${nowQty}`;
   } else if (tx.action === "issue") {
-    const dest = tx.source_reference || "Kitchen";
+    const dest = tx.notes || "Kitchen";
     return `Issued ${qty} ${unit} to ${dest} — ${dateStr} → now ${nowQty}`;
   } else if (tx.action === "adjust") {
     const sign = tx.quantity_delta >= 0 ? "+" : "-";
-    return `Adjusted by ${sign}${qty} ${unit} — ${dateStr} → now ${nowQty}`;
+    const reasonStr = tx.notes ? ` (${tx.notes})` : "";
+    return `Adjusted by ${sign}${qty} ${unit}${reasonStr} — ${dateStr} → now ${nowQty}`;
   } else if (tx.action === "waste") {
-    return `Logged as waste — ${qty} ${unit} — ${dateStr} → now ${nowQty}`;
+    const reasonStr = tx.notes ? ` (${tx.notes})` : "";
+    return `Logged as waste — ${qty} ${unit}${reasonStr} — ${dateStr} → now ${nowQty}`;
   } else if (tx.action === "confirmation_resolved") {
     return `Resolved match — ${qty} ${unit} — ${dateStr} → now ${nowQty}`;
   } else {

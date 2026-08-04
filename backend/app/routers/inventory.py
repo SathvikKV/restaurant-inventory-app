@@ -331,7 +331,7 @@ async def issue_stock(
     await log_transaction(
         db, models, item_id=item.id, item_name=item.item, action="issue",
         quantity_delta=-body.quantity, resulting_qty=item.current_qty, unit=item.unit,
-        recorded_by=recorded_by_name, source_reference=body.destination
+        recorded_by=recorded_by_name, notes=body.destination
     )
     await db.commit()
     
@@ -379,7 +379,7 @@ async def adjust_stock(
     await log_transaction(
         db, models, item_id=item.id, item_name=item.item, action="adjust",
         quantity_delta=delta, resulting_qty=item.current_qty, unit=item.unit,
-        recorded_by=recorded_by_name, source_reference=body.reason
+        recorded_by=recorded_by_name, notes=body.reason
     )
     await db.commit()
     
@@ -431,6 +431,34 @@ async def resolve_history_image_url(source_reference: Optional[str], models, db)
     return None
 
 
+@router.get("/activity/all", summary="Tenant-wide chronological activity feed")
+async def get_all_activity(
+    action: Optional[str] = None, limit: int = 100, offset: int = 0,
+    user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)
+):
+    schema = user.get("schema")
+    if not schema:
+        raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+    models = get_tenant_models(schema)
+    InventoryTransaction = models["inventory_transactions"]
+    stmt = select(InventoryTransaction).order_by(InventoryTransaction.created_at.desc())
+    if action:
+        stmt = stmt.where(InventoryTransaction.action == action)
+    stmt = stmt.offset(offset).limit(limit)
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    out = []
+    for r in rows:
+        image_url = await resolve_history_image_url(r.source_reference, models, db)
+        out.append({
+            "id": str(r.id), "item_name": r.item_name, "action": r.action,
+            "quantity_delta": r.quantity_delta, "resulting_qty": r.resulting_qty, "unit": r.unit,
+            "notes": r.notes, "recorded_by": r.recorded_by, "image_url": image_url,
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+        })
+    return out
+
+
 @router.get("/{item_id}/history", summary="Chronological transaction history for one item")
 async def get_item_history(
     item_id: str,
@@ -460,8 +488,10 @@ async def get_item_history(
             "resulting_qty": r.resulting_qty,
             "unit": r.unit,
             "recorded_by": r.recorded_by,
+            "notes": r.notes,
             "source_reference": r.source_reference,
             "image_url": image_url,
             "created_at": r.created_at.isoformat() if r.created_at else "",
         })
     return out
+
