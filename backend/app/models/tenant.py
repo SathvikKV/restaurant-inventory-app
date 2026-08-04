@@ -125,6 +125,21 @@ def make_tenant_models(schema: str) -> dict:
         unit: Mapped[str] = mapped_column(String(50), nullable=False)
         category: Mapped[str] = mapped_column(String(50), nullable=False)
 
+    class InventoryTransaction(Base):
+        __tablename__ = "inventory_transactions"
+        __table_args__ = {"schema": schema, "extend_existing": True}
+
+        id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+        item_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+        item_name: Mapped[str] = mapped_column(String(255), nullable=False)
+        action: Mapped[str] = mapped_column(String(30), nullable=False)
+        quantity_delta: Mapped[float] = mapped_column(Float, nullable=False)
+        resulting_qty: Mapped[float] = mapped_column(Float, nullable=False)
+        unit: Mapped[str] = mapped_column(String(50), nullable=False)
+        source_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+        recorded_by: Mapped[str] = mapped_column(String(255), nullable=False)
+        created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
     result = {
         "inventory": InventoryItem,
         "purchases": Purchase,
@@ -135,6 +150,7 @@ def make_tenant_models(schema: str) -> dict:
         "staff_contacts": StaffContact,
         "recipes": Recipe,
         "recipe_ingredients": RecipeIngredient,
+        "inventory_transactions": InventoryTransaction,
     }
     _model_cache[schema] = result
     return result

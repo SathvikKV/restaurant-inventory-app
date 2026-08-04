@@ -14,6 +14,7 @@ from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models, require_schema
 from app.services.embeddings import get_embedding
+from app.services.transaction_log import log_transaction
 
 router = APIRouter()
 
@@ -39,22 +40,6 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
     if not confirmation:
         raise HTTPException(status_code=404, detail="Confirmation not found")
 
-    item = None
-    if body.action == "same":
-        result = await db.execute(select(InventoryItem).where(func.lower(InventoryItem.item) == confirmation.candidate_name.strip().lower()))
-        item = result.scalar_one_or_none()
-        if item:
-            item.previous_qty = item.current_qty
-            item.current_qty += confirmation.quantity
-            item.last_updated = datetime.now(timezone.utc)
-    else:
-        db.add(InventoryItem(item=confirmation.extracted_name, unit=confirmation.unit, current_qty=confirmation.quantity,
-                              previous_qty=0.0, reorder_threshold=0.0, category="misc", last_updated=datetime.now(timezone.utc),
-                              embedding=await asyncio.to_thread(get_embedding, confirmation.extracted_name)))
-
-    confirmation.status = "resolved"
-    await db.commit()
-
     from app.models.public import User, Tenant
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
     tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
@@ -63,6 +48,34 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
     recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
     if not recorded_by_name:
         recorded_by_name = user["user_id"]
+
+    item = None
+    if body.action == "same":
+        result = await db.execute(select(InventoryItem).where(func.lower(InventoryItem.item) == confirmation.candidate_name.strip().lower()))
+        item = result.scalar_one_or_none()
+        if item:
+            item.previous_qty = item.current_qty
+            item.current_qty += confirmation.quantity
+            item.last_updated = datetime.now(timezone.utc)
+            await log_transaction(
+                db, models, item_id=item.id, item_name=item.item, action="confirmation_resolved",
+                quantity_delta=confirmation.quantity, resulting_qty=item.current_qty, unit=item.unit,
+                recorded_by=recorded_by_name, source_reference=f"Confirmation #{confirmation.id}"
+            )
+    else:
+        new_inv = InventoryItem(item=confirmation.extracted_name, unit=confirmation.unit, current_qty=confirmation.quantity,
+                              previous_qty=0.0, reorder_threshold=0.0, category="misc", last_updated=datetime.now(timezone.utc),
+                              embedding=await asyncio.to_thread(get_embedding, confirmation.extracted_name))
+        db.add(new_inv)
+        await db.flush()
+        await log_transaction(
+            db, models, item_id=new_inv.id, item_name=new_inv.item, action="confirmation_resolved",
+            quantity_delta=confirmation.quantity, resulting_qty=new_inv.current_qty, unit=new_inv.unit,
+            recorded_by=recorded_by_name, source_reference=f"Confirmation #{confirmation.id}"
+        )
+
+    confirmation.status = "resolved"
+    await db.commit()
 
     from app.services.mise_writeback import push_to_mise
 

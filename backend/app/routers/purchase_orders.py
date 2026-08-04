@@ -15,6 +15,7 @@ from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
 from app.services.embeddings import get_embedding, cosine_similarity
+from app.services.transaction_log import log_transaction
 from app.schemas.purchase_order import (
     PurchaseOrderResponse, PurchaseOrderCreate,
     PurchaseOrderApproveReject, ReceiveDeliveryRequest,
@@ -342,6 +343,18 @@ async def create_purchase_from_ocr(
     inv_res = await db.execute(select(InventoryItem))
     existing_items = list(inv_res.scalars().all())
 
+    purchase_record = Purchase(
+        supplier=body.supplier_name or "Unknown",
+        items=[item.dict() for item in body.line_items],
+        recorded_by=recorded_by_name,
+        s3_key=body.invoice_s3_key,
+        status="active",
+        source="mobile_ocr",
+    )
+    db.add(purchase_record)
+    await db.flush()
+    source_ref = body.invoice_s3_key or str(purchase_record.id)
+
     resolutions = body.resolutions or {}
     for line in body.line_items:
         res = resolutions.get(line.item_name)
@@ -359,6 +372,11 @@ async def create_purchase_from_ocr(
                     target_item.current_qty += line.quantity
                     target_item.previous_updated = target_item.last_updated
                     target_item.last_updated = datetime.now(timezone.utc)
+                    await log_transaction(
+                        db, models, item_id=target_item.id, item_name=target_item.item, action="invoice",
+                        quantity_delta=line.quantity, resulting_qty=target_item.current_qty, unit=target_item.unit,
+                        recorded_by=recorded_by_name, source_reference=source_ref
+                    )
                     sync_calls.append({"item_name": target_item.item, "quantity": line.quantity, "unit": target_item.unit})
                 continue
             elif res.get("same") is False:
@@ -369,6 +387,12 @@ async def create_purchase_from_ocr(
                     embedding=await asyncio.to_thread(get_embedding, line.item_name),
                 )
                 db.add(new_inv)
+                await db.flush()
+                await log_transaction(
+                    db, models, item_id=new_inv.id, item_name=new_inv.item, action="invoice",
+                    quantity_delta=line.quantity, resulting_qty=new_inv.current_qty, unit=new_inv.unit,
+                    recorded_by=recorded_by_name, source_reference=source_ref
+                )
                 existing_items.append(new_inv)
                 new_items_created.append(line.item_name)
                 sync_calls.append({"item_name": line.item_name, "quantity": line.quantity, "unit": line.unit})
@@ -396,6 +420,11 @@ async def create_purchase_from_ocr(
                 best_item.previous_updated = best_item.last_updated
                 best_item.last_updated = datetime.now(timezone.utc)
                 resolved_unit = best_item.unit
+                await log_transaction(
+                    db, models, item_id=best_item.id, item_name=best_item.item, action="invoice",
+                    quantity_delta=line.quantity, resulting_qty=best_item.current_qty, unit=resolved_unit,
+                    recorded_by=recorded_by_name, source_reference=source_ref
+                )
                 sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": resolved_unit})
         elif score >= 0.80 and best_item:
             existing_pending = await db.execute(
@@ -423,19 +452,17 @@ async def create_purchase_from_ocr(
                 embedding=await asyncio.to_thread(get_embedding, line.item_name),
             )
             db.add(new_inv)
+            await db.flush()
+            await log_transaction(
+                db, models, item_id=new_inv.id, item_name=new_inv.item, action="invoice",
+                quantity_delta=line.quantity, resulting_qty=new_inv.current_qty, unit=new_inv.unit,
+                recorded_by=recorded_by_name, source_reference=source_ref
+            )
             existing_items.append(new_inv)
             new_items_created.append(line.item_name)
             resolved_unit = line.unit
             sync_calls.append({"item_name": line.item_name, "quantity": line.quantity, "unit": resolved_unit})
 
-    db.add(Purchase(
-        supplier=body.supplier_name or "Unknown",
-        items=[item.dict() for item in body.line_items],
-        recorded_by=recorded_by_name,
-        s3_key=body.invoice_s3_key,
-        status="active",
-        source="mobile_ocr",
-    ))
     await db.commit()
 
     from app.services.mise_writeback import push_to_mise

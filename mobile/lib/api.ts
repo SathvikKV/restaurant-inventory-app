@@ -116,6 +116,23 @@ export async function getInventoryItem(token: string, itemId: string) {
   );
 }
 
+export interface TransactionHistoryItem {
+  id: string;
+  action: string;
+  quantity_delta: number;
+  resulting_qty: number;
+  unit: string;
+  recorded_by: string;
+  source_reference: string | null;
+  created_at: string;
+}
+
+export async function getItemHistory(token: string, itemId: string, limit = 50) {
+  return request<TransactionHistoryItem[]>(
+    `/inventory/${itemId}/history?limit=${limit}`, { method: "GET" }, token
+  );
+}
+
 export async function receiveStock(token: string, itemId: string, quantity: number, notes?: string) {
   return request(`/inventory/${itemId}/receive`, {
     method: "POST",

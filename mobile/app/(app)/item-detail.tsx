@@ -1,9 +1,62 @@
-import { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { useState, useEffect } from "react";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { ChevronLeft, MoreVertical, AlertTriangle, PenLine, ArrowDownToLine, Package } from "lucide-react-native";
+import { ChevronLeft, MoreVertical, AlertTriangle, PenLine, ArrowDownToLine, Package, CheckCircle } from "lucide-react-native";
 import { colors } from "../../components/ui";
+import { useAuth } from "../../lib/auth-context";
+import { getItemHistory, TransactionHistoryItem } from "../../lib/api";
+
+const TYPE_COLORS: Record<string, string> = {
+  receive: "#059669",
+  invoice: "#059669",
+  waste: "#DC2626",
+  issue: "#111418",
+  adjust: "#7C3AED",
+  confirmation_resolved: "#D97706",
+};
+
+function getHistoryIcon(action: string) {
+  switch (action) {
+    case "receive":
+    case "invoice":
+      return <Package size={16} color="#059669" />;
+    case "waste":
+      return <AlertTriangle size={16} color="#DC2626" />;
+    case "issue":
+      return <ArrowDownToLine size={16} color="#111418" />;
+    case "adjust":
+      return <PenLine size={16} color="#7C3AED" />;
+    case "confirmation_resolved":
+      return <CheckCircle size={16} color="#D97706" />;
+    default:
+      return <Package size={16} color={colors.primary} />;
+  }
+}
+
+function formatHistoryEntry(tx: TransactionHistoryItem) {
+  const qty = Math.abs(tx.quantity_delta);
+  const unit = tx.unit;
+  const nowQty = `${tx.resulting_qty} ${unit}`;
+  const dateStr = tx.created_at ? new Date(tx.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Today";
+
+  if (tx.action === "receive" || tx.action === "invoice") {
+    const label = tx.action === "invoice" ? "Invoice" : "Receive";
+    return `Received ${qty} ${unit} — ${label} — ${dateStr} → now ${nowQty}`;
+  } else if (tx.action === "issue") {
+    const dest = tx.source_reference || "Kitchen";
+    return `Issued ${qty} ${unit} to ${dest} — ${dateStr} → now ${nowQty}`;
+  } else if (tx.action === "adjust") {
+    const sign = tx.quantity_delta >= 0 ? "+" : "-";
+    return `Adjusted by ${sign}${qty} ${unit} — ${dateStr} → now ${nowQty}`;
+  } else if (tx.action === "waste") {
+    return `Logged as waste — ${qty} ${unit} — ${dateStr} → now ${nowQty}`;
+  } else if (tx.action === "confirmation_resolved") {
+    return `Resolved match — ${qty} ${unit} — ${dateStr} → now ${nowQty}`;
+  } else {
+    return `${tx.action}: ${tx.quantity_delta} ${unit} — ${dateStr} → now ${nowQty}`;
+  }
+}
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { bg: string; text: string; border: string }> = {
@@ -26,7 +79,24 @@ function StatusBadge({ status }: { status: string }) {
 export default function ItemDetailScreen() {
   const { itemJson } = useLocalSearchParams<{ itemJson: string }>();
   const item = JSON.parse(itemJson || "{}");
+  const { auth } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [history, setHistory] = useState<TransactionHistoryItem[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+
+  useEffect(() => {
+    if (!auth.token || !item.id) return;
+    (async () => {
+      try {
+        const data = await getItemHistory(auth.token!, item.id);
+        setHistory(data || []);
+      } catch (e) {
+        console.error("Failed to load item history:", e);
+      } finally {
+        setLoadingHistory(false);
+      }
+    })();
+  }, [auth.token, item.id]);
 
   const isOut = item.quantity === 0;
 
@@ -184,18 +254,45 @@ export default function ItemDetailScreen() {
           </View>
         </View>
 
-        {/* History placeholder */}
+        {/* History section */}
         <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, marginBottom: 16, paddingHorizontal: 4, letterSpacing: -0.3 }}>Chronological History</Text>
-        <View style={{
-          backgroundColor: colors.card,
-          borderRadius: 28,
-          borderWidth: 1,
-          borderColor: colors.border,
-          padding: 24,
-          alignItems: "center",
-        }}>
-          <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center", paddingVertical: 16 }}>No recent history for this item.</Text>
-        </View>
+        {loadingHistory ? (
+          <View style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, padding: 32, alignItems: "center" }}>
+            <ActivityIndicator color={colors.primary} />
+          </View>
+        ) : history.length === 0 ? (
+          <View style={{
+            backgroundColor: colors.card,
+            borderRadius: 28,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: 24,
+            alignItems: "center",
+          }}>
+            <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600", textAlign: "center", paddingVertical: 16 }}>No recent history for this item.</Text>
+          </View>
+        ) : (
+          <View style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, padding: 20, gap: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+            {history.map((tx, idx, arr) => {
+              const dotColor = TYPE_COLORS[tx.action] || colors.primary;
+              return (
+                <View key={tx.id || idx} style={{ flexDirection: "row", gap: 14, position: "relative" }}>
+                  {idx < arr.length - 1 && (
+                    <View style={{ position: "absolute", left: 14, top: 24, width: 2, bottom: -20, backgroundColor: colors.border }} />
+                  )}
+                  <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: `${dotColor}15`, alignItems: "center", justifyContent: "center", zIndex: 1 }}>
+                    {getHistoryIcon(tx.action)}
+                  </View>
+                  <View style={{ flex: 1, justifyContent: "center" }}>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: colors.textMain, lineHeight: 20, letterSpacing: -0.2 }}>
+                      {formatHistoryEntry(tx)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
 
       {/* Bottom action bar */}

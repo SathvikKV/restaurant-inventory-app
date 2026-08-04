@@ -11,6 +11,7 @@ from typing import List, Optional
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
+from app.services.transaction_log import log_transaction
 from app.schemas.common import WastageRecordCreate, WastageRecordResponse
 
 router = APIRouter()
@@ -91,6 +92,11 @@ async def create_wastage(
         recorded_by=user.get("user_id")
     )
     db.add(wastage)
+    await log_transaction(
+        db, models, item_id=item.id, item_name=item.item, action="waste",
+        quantity_delta=-body.quantity, resulting_qty=item.current_qty, unit=item.unit,
+        recorded_by=user.get("user_id", "Unknown"), source_reference=body.reason
+    )
     await db.commit()
     await db.refresh(wastage)
 

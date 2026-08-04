@@ -13,6 +13,7 @@ from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
 from app.services.embeddings import get_embedding
+from app.services.transaction_log import log_transaction
 from app.schemas.inventory import (
     InventoryItemResponse, InventoryItemCreate, InventoryItemUpdate,
     StockAdjustRequest, StockIssueRequest, StockReceiveRequest,
@@ -267,6 +268,11 @@ async def receive_stock(
     item.previous_updated = item.last_updated
     item.last_updated = datetime.now(timezone.utc)
 
+    await log_transaction(
+        db, models, item_id=item.id, item_name=item.item, action="receive",
+        quantity_delta=body.quantity, resulting_qty=item.current_qty, unit=item.unit,
+        recorded_by=recorded_by_name
+    )
     await db.commit()
     
     from app.services.mise_writeback import push_to_mise
@@ -320,6 +326,11 @@ async def issue_stock(
     )
     db.add(new_issue)
     
+    await log_transaction(
+        db, models, item_id=item.id, item_name=item.item, action="issue",
+        quantity_delta=-body.quantity, resulting_qty=item.current_qty, unit=item.unit,
+        recorded_by=recorded_by_name, source_reference=body.destination
+    )
     await db.commit()
     
     from app.services.mise_writeback import push_to_mise
@@ -362,6 +373,12 @@ async def adjust_stock(
     item.previous_updated = item.last_updated
     item.last_updated = datetime.now(timezone.utc)
 
+    delta = body.new_quantity - item.previous_qty
+    await log_transaction(
+        db, models, item_id=item.id, item_name=item.item, action="adjust",
+        quantity_delta=delta, resulting_qty=item.current_qty, unit=item.unit,
+        recorded_by=recorded_by_name, source_reference=body.reason
+    )
     await db.commit()
     
     from app.services.mise_writeback import push_to_mise
@@ -382,3 +399,34 @@ async def get_item_transactions(
     db: AsyncSession = Depends(get_db)
 ):
     return {"item_id": item_id, "transactions": [], "total": 0}
+
+
+@router.get("/{item_id}/history", summary="Chronological transaction history for one item")
+async def get_item_history(
+    item_id: str,
+    limit: int = 50,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    schema = user.get("schema")
+    if not schema:
+        raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+    models = get_tenant_models(schema)
+    InventoryTransaction = models["inventory_transactions"]
+    result = await db.execute(
+        select(InventoryTransaction)
+        .where(InventoryTransaction.item_id == uuid.UUID(item_id))
+        .order_by(InventoryTransaction.created_at.desc())
+        .limit(limit)
+    )
+    rows = result.scalars().all()
+    return [{
+        "id": str(r.id),
+        "action": r.action,
+        "quantity_delta": r.quantity_delta,
+        "resulting_qty": r.resulting_qty,
+        "unit": r.unit,
+        "recorded_by": r.recorded_by,
+        "source_reference": r.source_reference,
+        "created_at": r.created_at.isoformat() if r.created_at else "",
+    } for r in rows]
