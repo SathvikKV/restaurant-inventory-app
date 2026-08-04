@@ -24,6 +24,14 @@ export default function AdjustStockScreen() {
   const [reason, setReason] = useState("Stock Correction");
   const [loading, setLoading] = useState(false);
 
+  function goBackOrHome() {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(app)/home" as any);
+    }
+  }
+
   async function handleSave() {
     if (!selectedItem || !qty) return;
     const val = parseFloat(qty);
@@ -35,7 +43,7 @@ export default function AdjustStockScreen() {
       const newQty = Math.max(0, fresh.quantity + delta);
       await adjustStock(auth.token!, selectedItem.id, newQty, reason);
       Alert.alert("Done", "Stock adjusted successfully.");
-      router.back();
+      goBackOrHome();
     } catch (e: any) {
       Alert.alert("Error", e.message);
     } finally {
@@ -49,13 +57,13 @@ export default function AdjustStockScreen() {
         visible={showPicker}
         token={auth.token || ""}
         onSelect={item => setSelectedItem(item)}
-        onClose={() => { if (!selectedItem) router.back(); else setShowPicker(false); }}
+        onClose={() => { if (!selectedItem) goBackOrHome(); else setShowPicker(false); }}
       />
 
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <View style={{ flex: 1, paddingHorizontal: 24 }}>
           <View style={{ flexDirection: "row", alignItems: "center", paddingTop: 8, paddingBottom: 24 }}>
-            <TouchableOpacity onPress={() => router.back()} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
+            <TouchableOpacity onPress={goBackOrHome} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
               <ChevronLeft size={24} color={colors.textMain} strokeWidth={2} />
             </TouchableOpacity>
           </View>

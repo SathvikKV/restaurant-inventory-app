@@ -23,6 +23,14 @@ export default function LogWastageScreen() {
   const [reason, setReason] = useState("Spoilage");
   const [loading, setLoading] = useState(false);
 
+  function goBackOrHome() {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(app)/home" as any);
+    }
+  }
+
   async function handleSave() {
     if (!selectedItem || !qty) return;
     const val = parseFloat(qty);
@@ -31,7 +39,7 @@ export default function LogWastageScreen() {
     try {
       await logWastage(auth.token!, selectedItem.name, val, selectedItem.unit, reason);
       Alert.alert("Done", "Wastage logged.");
-      router.back();
+      goBackOrHome();
     } catch (e: any) {
       Alert.alert("Error", e.message);
     } finally {
@@ -45,13 +53,13 @@ export default function LogWastageScreen() {
         visible={showPicker}
         token={auth.token || ""}
         onSelect={item => setSelectedItem(item)}
-        onClose={() => { if (!selectedItem) router.back(); else setShowPicker(false); }}
+        onClose={() => { if (!selectedItem) goBackOrHome(); else setShowPicker(false); }}
       />
 
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}>
           <View style={{ flexDirection: "row", alignItems: "center", paddingTop: 8, paddingBottom: 24 }}>
-            <TouchableOpacity onPress={() => router.back()} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
+            <TouchableOpacity onPress={goBackOrHome} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
               <ChevronLeft size={24} color={colors.textMain} strokeWidth={2} />
             </TouchableOpacity>
           </View>

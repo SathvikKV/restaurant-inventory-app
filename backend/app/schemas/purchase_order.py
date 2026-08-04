@@ -6,7 +6,7 @@ from typing import Optional, Literal, Any
 from datetime import date
 
 
-POStatus = Literal["draft", "pending", "approved", "rejected", "delivered"]
+POStatus = str
 
 
 class PurchaseOrderResponse(BaseModel):
