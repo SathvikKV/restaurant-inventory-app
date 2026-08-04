@@ -2,6 +2,8 @@
 Issues (indents) router.
 """
 import uuid
+import asyncio
+from datetime import datetime, timezone
 from typing import List, Optional, Any
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,8 @@ from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
 from app.services.s3_service import get_s3_presigned_url
+from app.services.transaction_log import log_transaction
+from app.routers.purchase_orders import _best_match_semantic
 
 router = APIRouter()
 
@@ -100,3 +104,134 @@ async def get_issue(
     if not iss:
         raise HTTPException(status_code=404, detail="Issue not found")
     return _map_issue_response(iss)
+
+
+class IndentLineItemIn(BaseModel):
+    item_name: str
+    quantity: float
+    unit: str
+
+
+class IndentSaveRequest(BaseModel):
+    section: Optional[str] = None
+    indent_number: Optional[str] = None
+    indent_s3_key: Optional[str] = None
+    line_items: List[IndentLineItemIn]
+    resolutions: Optional[dict] = None
+
+
+@router.post("/from-ocr", summary="Save an OCR-extracted kitchen indent and deduct inventory")
+async def create_issue_from_ocr(
+    body: IndentSaveRequest,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    schema = user.get("schema")
+    if not schema:
+        raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+    models = get_tenant_models(schema)
+    InventoryItem, Issue, PendingConfirmation = models["inventory"], models["issues"], models["confirmations"]
+
+    from app.models.public import User, Tenant
+    user_record = await db.get(User, uuid.UUID(user["user_id"]))
+    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
+
+    recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
+    if not recorded_by_name:
+        recorded_by_name = user["user_id"]
+
+    inv_res = await db.execute(select(InventoryItem))
+    existing_items = list(inv_res.scalars().all())
+
+    issue_record = Issue(
+        section=body.section or "Kitchen",
+        outlet="Kitchen",
+        indent_number=body.indent_number,
+        items={line.item_name: line.quantity for line in body.line_items},
+        recorded_by=recorded_by_name,
+        s3_key=body.indent_s3_key,
+        status="active",
+    )
+    db.add(issue_record)
+    await db.flush()
+    source_ref = body.indent_s3_key or str(issue_record.id)
+
+    resolutions = body.resolutions or {}
+    accepted, denied = [], []
+    sync_calls = []
+
+    for line in body.line_items:
+        res = resolutions.get(line.item_name)
+        if res is not None:
+            if res.get("same") is True:
+                target_id = res.get("target_item_id")
+                target_item = None
+                if target_id:
+                    for item in existing_items:
+                        if str(item.id) == str(target_id):
+                            target_item = item
+                            break
+                if target_item:
+                    if target_item.current_qty < line.quantity:
+                        denied.append({"item": line.item_name, "reason": "Insufficient stock", "available": target_item.current_qty})
+                        continue
+                    target_item.previous_qty = target_item.current_qty
+                    target_item.current_qty -= line.quantity
+                    target_item.previous_updated = target_item.last_updated
+                    target_item.last_updated = datetime.now(timezone.utc)
+                    await log_transaction(db, models, item_id=target_item.id, item_name=target_item.item, action="issue",
+                                           quantity_delta=-line.quantity, resulting_qty=target_item.current_qty, unit=target_item.unit,
+                                           recorded_by=recorded_by_name, source_reference=source_ref)
+                    accepted.append(line.item_name)
+                    sync_calls.append({"item_name": target_item.item, "quantity": line.quantity, "unit": target_item.unit})
+                else:
+                    denied.append({"item": line.item_name, "reason": "Target item not found"})
+            elif res.get("same") is False:
+                denied.append({"item": line.item_name, "reason": "Marked as different item (cannot issue uncreated stock)"})
+            continue
+
+        best_item, score = await _best_match_semantic(line.item_name, existing_items)
+        if score >= 0.95 and best_item and best_item.unit.strip().lower() == line.unit.strip().lower():
+            if best_item.current_qty < line.quantity:
+                denied.append({"item": line.item_name, "reason": "Insufficient stock", "available": best_item.current_qty})
+                continue
+            best_item.previous_qty = best_item.current_qty
+            best_item.current_qty -= line.quantity
+            best_item.previous_updated = best_item.last_updated
+            best_item.last_updated = datetime.now(timezone.utc)
+            await log_transaction(db, models, item_id=best_item.id, item_name=best_item.item, action="issue",
+                                   quantity_delta=-line.quantity, resulting_qty=best_item.current_qty, unit=best_item.unit,
+                                   recorded_by=recorded_by_name, source_reference=source_ref)
+            accepted.append(line.item_name)
+            sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": best_item.unit})
+        else:
+            existing_pending = await db.execute(
+                select(PendingConfirmation).where(
+                    PendingConfirmation.extracted_name == line.item_name,
+                    PendingConfirmation.status == "pending",
+                )
+            )
+            if not existing_pending.scalar_one_or_none():
+                db.add(PendingConfirmation(
+                    extracted_name=line.item_name,
+                    candidate_name=best_item.item if best_item else "None",
+                    score=score if best_item else 0.0,
+                    quantity=line.quantity,
+                    unit=line.unit,
+                    source="app_indent",
+                ))
+            denied.append({"item": line.item_name, "reason": "Needs review" if best_item else "Item not found"})
+
+    await db.commit()
+
+    from app.services.mise_writeback import push_to_mise
+    for call in sync_calls:
+        asyncio.create_task(push_to_mise(
+            action="issue", item_name=call["item_name"], quantity=call["quantity"],
+            unit=call["unit"], recorded_by=recorded_by_name, destination=body.section or "Kitchen",
+            spreadsheet_id=spreadsheet_id
+        ))
+
+    return {"accepted": accepted, "denied": denied}
+

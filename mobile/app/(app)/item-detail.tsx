@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import { ChevronLeft, MoreVertical, AlertTriangle, PenLine, ArrowDownToLine, Package, CheckCircle } from "lucide-react-native";
+import { ChevronLeft, MoreVertical, AlertTriangle, PenLine, ArrowDownToLine, Package, CheckCircle, Maximize2 } from "lucide-react-native";
 import { colors } from "../../components/ui";
 import { useAuth } from "../../lib/auth-context";
 import { getItemHistory, TransactionHistoryItem } from "../../lib/api";
+import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 
 const TYPE_COLORS: Record<string, string> = {
   receive: "#059669",
@@ -83,6 +84,7 @@ export default function ItemDetailScreen() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [history, setHistory] = useState<TransactionHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!auth.token || !item.id) return;
@@ -104,6 +106,13 @@ export default function ItemDetailScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
+      {/* Image Preview Modal */}
+      <ImagePreviewModal
+        visible={!!previewImage}
+        imageUri={previewImage}
+        onClose={() => setPreviewImage(null)}
+      />
+
       {/* Top nav */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
         <TouchableOpacity
@@ -275,8 +284,10 @@ export default function ItemDetailScreen() {
           <View style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, padding: 20, gap: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
             {history.map((tx, idx, arr) => {
               const dotColor = TYPE_COLORS[tx.action] || colors.primary;
+              const RowComponent = tx.image_url ? TouchableOpacity : View;
+              const rowProps = tx.image_url ? { onPress: () => setPreviewImage(tx.image_url!) } : {};
               return (
-                <View key={tx.id || idx} style={{ flexDirection: "row", gap: 14, position: "relative" }}>
+                <RowComponent key={tx.id || idx} style={{ flexDirection: "row", gap: 14, position: "relative", alignItems: "center" }} {...rowProps}>
                   {idx < arr.length - 1 && (
                     <View style={{ position: "absolute", left: 14, top: 24, width: 2, bottom: -20, backgroundColor: colors.border }} />
                   )}
@@ -288,7 +299,12 @@ export default function ItemDetailScreen() {
                       {formatHistoryEntry(tx)}
                     </Text>
                   </View>
-                </View>
+                  {tx.image_url && (
+                    <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: `${colors.primary}10`, alignItems: "center", justifyContent: "center" }}>
+                      <Maximize2 size={14} color={colors.primary} />
+                    </View>
+                  )}
+                </RowComponent>
               );
             })}
           </View>

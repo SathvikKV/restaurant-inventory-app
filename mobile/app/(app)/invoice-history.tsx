@@ -6,6 +6,7 @@ import { ChevronLeft, AlertCircle, Receipt, FileText, X, Maximize2 } from "lucid
 import { useAuth } from "../../lib/auth-context";
 import { getPurchaseOrders, getIssues } from "../../lib/api";
 import { colors } from "../../components/ui";
+import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 
 type DocumentItem = {
   id: string;
@@ -92,23 +93,11 @@ export default function InvoiceHistoryScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
       {/* Image Preview Modal */}
-      <Modal visible={!!previewImage} transparent={true} animationType="fade" onRequestClose={() => setPreviewImage(null)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.9)", justifyContent: "center", alignItems: "center" }}>
-          <TouchableOpacity
-            style={{ position: "absolute", top: 50, right: 24, width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", zIndex: 10 }}
-            onPress={() => setPreviewImage(null)}
-          >
-            <X size={24} color="white" />
-          </TouchableOpacity>
-          {previewImage && (
-            <Image
-              source={{ uri: previewImage }}
-              style={{ width: Dimensions.get("window").width * 0.95, height: Dimensions.get("window").height * 0.7, borderRadius: 16 }}
-              resizeMode="contain"
-            />
-          )}
-        </View>
-      </Modal>
+      <ImagePreviewModal
+        visible={!!previewImage}
+        imageUri={previewImage}
+        onClose={() => setPreviewImage(null)}
+      />
 
       {/* Top Bar */}
       <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>

@@ -2,6 +2,7 @@
 Inventory router — CRUD + stock movements.
 """
 import uuid
+import re
 import asyncio
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Depends
@@ -14,6 +15,7 @@ from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models
 from app.services.embeddings import get_embedding
 from app.services.transaction_log import log_transaction
+from app.services.s3_service import get_s3_presigned_url
 from app.schemas.inventory import (
     InventoryItemResponse, InventoryItemCreate, InventoryItemUpdate,
     StockAdjustRequest, StockIssueRequest, StockReceiveRequest,
@@ -401,6 +403,34 @@ async def get_item_transactions(
     return {"item_id": item_id, "transactions": [], "total": 0}
 
 
+UUID_PATTERN = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+
+async def resolve_history_image_url(source_reference: Optional[str], models, db) -> Optional[str]:
+    if not source_reference:
+        return None
+    if UUID_PATTERN.match(source_reference):
+        try:
+            Purchase = models["purchases"]
+            purchase = await db.get(Purchase, uuid.UUID(source_reference))
+            if purchase and getattr(purchase, "s3_key", None):
+                return get_s3_presigned_url(purchase.s3_key)
+        except Exception:
+            pass
+        try:
+            Issue = models["issues"]
+            issue = await db.get(Issue, uuid.UUID(source_reference))
+            if issue and getattr(issue, "s3_key", None):
+                return get_s3_presigned_url(issue.s3_key)
+        except Exception:
+            pass
+        return None
+    if " " in source_reference and not source_reference.startswith("http"):
+        return None
+    if "/" in source_reference or source_reference.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.pdf')) or source_reference.startswith("http"):
+        return get_s3_presigned_url(source_reference)
+    return None
+
+
 @router.get("/{item_id}/history", summary="Chronological transaction history for one item")
 async def get_item_history(
     item_id: str,
@@ -420,13 +450,18 @@ async def get_item_history(
         .limit(limit)
     )
     rows = result.scalars().all()
-    return [{
-        "id": str(r.id),
-        "action": r.action,
-        "quantity_delta": r.quantity_delta,
-        "resulting_qty": r.resulting_qty,
-        "unit": r.unit,
-        "recorded_by": r.recorded_by,
-        "source_reference": r.source_reference,
-        "created_at": r.created_at.isoformat() if r.created_at else "",
-    } for r in rows]
+    out = []
+    for r in rows:
+        image_url = await resolve_history_image_url(r.source_reference, models, db)
+        out.append({
+            "id": str(r.id),
+            "action": r.action,
+            "quantity_delta": r.quantity_delta,
+            "resulting_qty": r.resulting_qty,
+            "unit": r.unit,
+            "recorded_by": r.recorded_by,
+            "source_reference": r.source_reference,
+            "image_url": image_url,
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+        })
+    return out

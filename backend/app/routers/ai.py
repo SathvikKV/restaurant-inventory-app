@@ -6,7 +6,8 @@ from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Literal
+import base64
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models, require_schema
@@ -55,6 +56,21 @@ class RecipeOut(BaseModel):
 
 class MenuOCRResult(BaseModel):
     recipes: List[RecipeOut]
+
+
+class ClassifyResult(BaseModel):
+    document_type: Literal["supplier_invoice", "kitchen_indent", "unknown"]
+
+
+class IndentLineItem(BaseModel):
+    item_name: str
+    quantity: float
+    unit: str
+
+
+class IndentOCRResult(BaseModel):
+    section: Optional[str] = None
+    line_items: List[IndentLineItem]
 
 
 def _get_gemini():
@@ -222,6 +238,88 @@ async def ocr_invoice(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR failed: {str(e)}")
+
+
+@router.post("/classify-document", response_model=ClassifyResult, summary="Classify document as invoice or indent")
+async def classify_document(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    if not settings.gemini_api_key:
+        return ClassifyResult(document_type="supplier_invoice")
+    try:
+        model = _get_gemini()
+        image_bytes = await file.read()
+        image_b64 = base64.b64encode(image_bytes).decode()
+        prompt = """Look at this image. Is it a SUPPLIER INVOICE (a bill from a vendor listing purchased goods with prices) or a KITCHEN INDENT (an internal slip listing items requested/issued to a kitchen section, usually no prices)? Respond with strict JSON only: {"document_type": "supplier_invoice" | "kitchen_indent" | "unknown"}"""
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(model.generate_content, [{"mime_type": file.content_type or "image/jpeg", "data": image_b64}, prompt]),
+                timeout=60.0
+            )
+        except asyncio.TimeoutError:
+            logger.error("Gemini call timed out after 60s")
+            raise HTTPException(status_code=504, detail="AI processing timed out. Please try again.")
+        text = response.text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        data = json.loads(text.strip())
+        doc_type = data.get("document_type", "unknown")
+        if doc_type not in ("supplier_invoice", "kitchen_indent", "unknown"):
+            doc_type = "unknown"
+        return ClassifyResult(document_type=doc_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Classification error: {e}")
+        return ClassifyResult(document_type="unknown")
+
+
+@router.post("/ocr/indent", response_model=IndentOCRResult, summary="Parse kitchen indent image with OCR")
+async def ocr_indent(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    if not settings.gemini_api_key:
+        return IndentOCRResult(
+            section="Demo Kitchen Section",
+            line_items=[
+                IndentLineItem(item_name="Sample Ingredient", quantity=2.0, unit="kg"),
+            ],
+        )
+    try:
+        model = _get_gemini()
+        image_bytes = await file.read()
+        image_b64 = base64.b64encode(image_bytes).decode()
+        prompt = """Extract kitchen indent (internal stock transfer / requisition slip) data from this image. Notice there are usually no prices, just items requested or issued to a kitchen section or station. Return ONLY valid JSON with this structure:
+{
+  "section": "string or null (e.g. Hot Kitchen, Bakery, Bar, Kitchen)",
+  "line_items": [{"item_name": "string", "quantity": number, "unit": "string"}]
+}"""
+        try:
+            response = await asyncio.wait_for(
+                asyncio.to_thread(model.generate_content, [prompt, {"mime_type": file.content_type or "image/jpeg", "data": image_b64}]),
+                timeout=150.0
+            )
+        except asyncio.TimeoutError:
+            logger.error("Gemini call timed out after 150s")
+            raise HTTPException(status_code=504, detail="AI processing timed out. Please try again.")
+        text = response.text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        data = json.loads(text.strip())
+        return IndentOCRResult(
+            section=data.get("section"),
+            line_items=[IndentLineItem(**item) for item in data.get("line_items", [])],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OCR indent failed: {str(e)}")
 
 @router.post("/ocr/menu", response_model=MenuOCRResult, summary="Extract dishes and infer core ingredients from a menu photo")
 async def ocr_menu(

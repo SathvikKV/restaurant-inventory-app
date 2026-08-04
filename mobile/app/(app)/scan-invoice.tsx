@@ -5,16 +5,19 @@ import { router, useFocusEffect } from "expo-router";
 import { X, Camera, ImagePlus, Check, Package, HelpCircle } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../../lib/auth-context";
-import { saveOCRInvoice, uploadInvoice, previewMatch, OCRResult, LineItem, PreviewMatchResult } from "../../lib/api";
+import { saveOCRInvoice, uploadInvoice, previewMatch, classifyDocument, uploadIndent, saveOCRIndent, OCRResult, IndentOCRResult, LineItem, PreviewMatchResult } from "../../lib/api";
 import { colors, PrimaryButton } from "../../components/ui";
 
 type Stage = "capture" | "processing" | "review" | "recorded";
+type DocType = "supplier_invoice" | "kitchen_indent" | "unknown";
 
 export default function ScanInvoiceScreen() {
   const { auth } = useAuth();
   const [stage, setStage] = useState<Stage>("capture");
+  const [docType, setDocType] = useState<DocType>("supplier_invoice");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [result, setResult] = useState<OCRResult | null>(null);
+  const [indentResult, setIndentResult] = useState<IndentOCRResult | null>(null);
   const [previewResults, setPreviewResults] = useState<PreviewMatchResult[]>([]);
   const [resolutions, setResolutions] = useState<Record<string, { same: boolean; target_item_id?: string }>>({});
   const [saving, setSaving] = useState(false);
@@ -22,8 +25,10 @@ export default function ScanInvoiceScreen() {
   useFocusEffect(
     useCallback(() => {
       setStage("capture");
+      setDocType("supplier_invoice");
       setImageUri(null);
       setResult(null);
+      setIndentResult(null);
       setPreviewResults([]);
       setResolutions({});
       setSaving(false);
@@ -35,18 +40,38 @@ export default function ScanInvoiceScreen() {
   const isAllResolved = reviewNeeded.every((item) => resolutions[item.item_name] !== undefined);
 
   async function handleConfirm() {
-    if (!result || !auth.token || stage === "recorded" || !isAllResolved) return;
+    if (!auth.token || stage === "recorded" || !isAllResolved) return;
     setSaving(true);
-    try {
-      const res = await saveOCRInvoice(auth.token, result, resolutions);
-      setStage("recorded");
-      const msg = res.new_items_created.length > 0
-        ? `Invoice recorded. New item(s) added: ${res.new_items_created.join(", ")}`
-        : "Invoice recorded successfully.";
-      Alert.alert("Done", msg, [{ text: "OK", onPress: () => router.replace("/(app)/home" as any) }]);
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to save invoice. Please try again.");
-      setSaving(false);
+    if (docType === "kitchen_indent") {
+      if (!indentResult) return;
+      try {
+        const res = await saveOCRIndent(auth.token, {
+          section: indentResult.section,
+          line_items: indentResult.line_items,
+          resolutions,
+        });
+        setStage("recorded");
+        const acceptedCount = res.accepted.length;
+        const deniedCount = res.denied.length;
+        const msg = `${acceptedCount} issued, ${deniedCount} need review${deniedCount > 0 ? ` (${res.denied.map(d => d.item).join(", ")})` : ""}.`;
+        Alert.alert("Indent Processed", msg, [{ text: "OK", onPress: () => router.replace("/(app)/home" as any) }]);
+      } catch (e: any) {
+        Alert.alert("Error", e.message || "Failed to save indent. Please try again.");
+        setSaving(false);
+      }
+    } else {
+      if (!result) return;
+      try {
+        const res = await saveOCRInvoice(auth.token, result, resolutions);
+        setStage("recorded");
+        const msg = res.new_items_created.length > 0
+          ? `Invoice recorded. New item(s) added: ${res.new_items_created.join(", ")}`
+          : "Invoice recorded successfully.";
+        Alert.alert("Done", msg, [{ text: "OK", onPress: () => router.replace("/(app)/home" as any) }]);
+      } catch (e: any) {
+        Alert.alert("Error", e.message || "Failed to save invoice. Please try again.");
+        setSaving(false);
+      }
     }
   }
 
@@ -80,19 +105,35 @@ export default function ScanInvoiceScreen() {
       setStage("processing");
 
       try {
-        const ocr = await uploadInvoice(auth.token!, asset.uri, asset.mimeType || "image/jpeg");
-        setResult(ocr);
-        try {
-          const previews = await previewMatch(auth.token!, ocr.line_items || []);
-          setPreviewResults(previews);
-        } catch (err: any) {
-          console.error("Preview match failed, defaulting to empty:", err);
-          setPreviewResults([]);
+        const classification = await classifyDocument(auth.token!, asset.uri, asset.mimeType || "image/jpeg");
+        const type = classification.document_type || "supplier_invoice";
+        setDocType(type);
+
+        if (type === "kitchen_indent") {
+          const ocr = await uploadIndent(auth.token!, asset.uri, asset.mimeType || "image/jpeg");
+          setIndentResult(ocr);
+          try {
+            const previews = await previewMatch(auth.token!, (ocr.line_items || []) as any);
+            setPreviewResults(previews);
+          } catch (err: any) {
+            console.error("Preview match failed, defaulting to empty:", err);
+            setPreviewResults([]);
+          }
+        } else {
+          const ocr = await uploadInvoice(auth.token!, asset.uri, asset.mimeType || "image/jpeg");
+          setResult(ocr);
+          try {
+            const previews = await previewMatch(auth.token!, ocr.line_items || []);
+            setPreviewResults(previews);
+          } catch (err: any) {
+            console.error("Preview match failed, defaulting to empty:", err);
+            setPreviewResults([]);
+          }
         }
         setResolutions({});
         setStage("review");
       } catch (e: any) {
-        Alert.alert("Error", e.message || "Failed to process invoice");
+        Alert.alert("Error", e.message || "Failed to process document");
         setStage("capture");
       }
     } catch (e: any) {
@@ -108,7 +149,9 @@ export default function ScanInvoiceScreen() {
           <Check size={40} color={colors.primary} strokeWidth={2.5} />
         </View>
         <Text style={{ fontSize: 24, fontWeight: "800", color: colors.textMain, marginBottom: 8 }}>✅ Recorded</Text>
-        <Text style={{ fontSize: 15, color: colors.textMuted, textAlign: "center", fontWeight: "600", marginBottom: 32 }}>Invoice has been saved and inventory updated successfully.</Text>
+        <Text style={{ fontSize: 15, color: colors.textMuted, textAlign: "center", fontWeight: "600", marginBottom: 32 }}>
+          {docType === "kitchen_indent" ? "Kitchen indent has been processed and inventory deducted successfully." : "Invoice has been saved and inventory updated successfully."}
+        </Text>
         <PrimaryButton label="Back to Home" onPress={() => router.replace("/(app)/home" as any)} />
       </SafeAreaView>
     );
@@ -121,13 +164,13 @@ export default function ScanInvoiceScreen() {
           <TouchableOpacity onPress={() => router.navigate("/(app)/more" as any)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
             <X size={22} color={colors.textMain} strokeWidth={2} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain }}>Scan Invoice</Text>
+          <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain }}>Scan Document</Text>
           <View style={{ width: 44 }} />
         </View>
 
         <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 40, gap: 16 }}>
-          <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5, marginBottom: 8 }}>Add Invoice</Text>
-          <Text style={{ fontSize: 15, color: colors.textMuted, fontWeight: "600", marginBottom: 24, lineHeight: 22 }}>Take a photo or upload from your library. SANQ will extract the items automatically.</Text>
+          <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5, marginBottom: 8 }}>Add Invoice or Indent</Text>
+          <Text style={{ fontSize: 15, color: colors.textMuted, fontWeight: "600", marginBottom: 24, lineHeight: 22 }}>Take a photo or upload from your library. SANQ will classify the document and extract items automatically.</Text>
 
           <TouchableOpacity
             onPress={() => pickImage(true)}
@@ -161,8 +204,8 @@ export default function ScanInvoiceScreen() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "white", alignItems: "center", justifyContent: "center", gap: 24 }}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Reading invoice...</Text>
-        <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600" }}>SANQ is extracting items</Text>
+        <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Reading document...</Text>
+        <Text style={{ fontSize: 14, color: colors.textMuted, fontWeight: "600" }}>SANQ is classifying and extracting items</Text>
       </SafeAreaView>
     );
   }
@@ -173,17 +216,38 @@ export default function ScanInvoiceScreen() {
         <TouchableOpacity onPress={() => setStage("capture")} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
           <X size={22} color={colors.textMain} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain }}>Review Invoice</Text>
+        <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain }}>{docType === "kitchen_indent" ? "Review Indent" : "Review Invoice"}</Text>
         <View style={{ width: 44 }} />
       </View>
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 120 }}>
-        {/* Supplier info */}
-        <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, padding: 20, marginBottom: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
-          <Text style={{ fontSize: 13, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Supplier</Text>
-          <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>{result?.supplier_name || "Unknown Supplier"}</Text>
-          {result?.invoice_number && <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: "600", marginTop: 4 }}>Invoice #{result.invoice_number}</Text>}
-        </View>
+        {/* Supplier / Section info */}
+        {docType === "kitchen_indent" ? (
+          <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, padding: 20, marginBottom: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View>
+                <Text style={{ fontSize: 13, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Kitchen Section</Text>
+                <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>{indentResult?.section || "General Kitchen"}</Text>
+              </View>
+              <View style={{ backgroundColor: "#E8F0EC", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                <Text style={{ fontSize: 12, fontWeight: "800", color: colors.primary, textTransform: "uppercase" }}>Indent</Text>
+              </View>
+            </View>
+          </View>
+        ) : (
+          <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, padding: 20, marginBottom: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View>
+                <Text style={{ fontSize: 13, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Supplier</Text>
+                <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>{result?.supplier_name || "Unknown Supplier"}</Text>
+                {result?.invoice_number && <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: "600", marginTop: 4 }}>Invoice #{result.invoice_number}</Text>}
+              </View>
+              <View style={{ backgroundColor: "#F5F3FF", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                <Text style={{ fontSize: 12, fontWeight: "800", color: "#7C3AED", textTransform: "uppercase" }}>Invoice</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Match Resolutions needed */}
         {reviewNeeded.length > 0 && (
@@ -234,7 +298,7 @@ export default function ScanInvoiceScreen() {
         {/* Line items */}
         <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, marginBottom: 12, paddingHorizontal: 4, letterSpacing: -0.3 }}>Extracted Items</Text>
         <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, overflow: "hidden", marginBottom: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
-          {(result?.line_items || []).map((item, idx, arr) => (
+          {(docType === "kitchen_indent" ? indentResult?.line_items || [] : result?.line_items || []).map((item: any, idx: number, arr: any[]) => (
             <View key={idx} style={{ padding: 16, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", gap: 12 }}>
               <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: "#F4F5F7", alignItems: "center", justifyContent: "center" }}>
                 <Package size={20} color={colors.textMuted} strokeWidth={2} />

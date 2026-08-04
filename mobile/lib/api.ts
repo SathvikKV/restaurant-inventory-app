@@ -124,6 +124,7 @@ export interface TransactionHistoryItem {
   unit: string;
   recorded_by: string;
   source_reference: string | null;
+  image_url?: string | null;
   created_at: string;
 }
 
@@ -204,6 +205,53 @@ export async function uploadInvoice(token: string, imageUri: string, mimeType: s
 export async function saveOCRInvoice(token: string, ocrData: any, resolutions?: Record<string, any>) {
   return request<{ new_items_created: string[] }>(
     "/purchase-orders/from-ocr", { method: "POST", body: JSON.stringify({ ...ocrData, resolutions }) }, token
+  );
+}
+
+export async function classifyDocument(token: string, imageUri: string, mimeType: string): Promise<{ document_type: "supplier_invoice" | "kitchen_indent" | "unknown" }> {
+  const formData = new FormData();
+  formData.append("file", { uri: imageUri, name: "document.jpg", type: mimeType || "image/jpeg" } as any);
+  const res = await fetch(`${BASE_URL}/ai/classify-document`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    let detail = "Classification failed";
+    try {
+      const errBody = await res.json();
+      detail = errBody.detail || detail;
+    } catch {}
+    throw new Error(`${detail} (${res.status})`);
+  }
+  return res.json();
+}
+
+export type IndentLineItem = { item_name: string; quantity: number; unit: string };
+export type IndentOCRResult = { section?: string | null; line_items: IndentLineItem[] };
+
+export async function uploadIndent(token: string, imageUri: string, mimeType: string): Promise<IndentOCRResult> {
+  const formData = new FormData();
+  formData.append("file", { uri: imageUri, name: "indent.jpg", type: mimeType || "image/jpeg" } as any);
+  const res = await fetch(`${BASE_URL}/ai/ocr/indent`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    let detail = "Indent OCR failed";
+    try {
+      const errBody = await res.json();
+      detail = errBody.detail || detail;
+    } catch {}
+    throw new Error(`${detail} (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function saveOCRIndent(token: string, data: { section?: string | null; indent_number?: string; indent_s3_key?: string; line_items: IndentLineItem[]; resolutions?: Record<string, any> }) {
+  return request<{ accepted: string[]; denied: { item: string; reason: string; available?: number }[] }>(
+    "/issues/from-ocr", { method: "POST", body: JSON.stringify(data) }, token
   );
 }
 
