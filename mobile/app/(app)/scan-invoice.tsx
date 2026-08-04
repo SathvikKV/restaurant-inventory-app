@@ -48,6 +48,7 @@ export default function ScanInvoiceScreen() {
         const res = await saveOCRIndent(auth.token, {
           section: indentResult.section,
           line_items: indentResult.line_items,
+          indent_s3_key: indentResult.s3_key,
           resolutions,
         });
         setStage("recorded");
@@ -62,7 +63,7 @@ export default function ScanInvoiceScreen() {
     } else {
       if (!result) return;
       try {
-        const res = await saveOCRInvoice(auth.token, result, resolutions);
+        const res = await saveOCRInvoice(auth.token, { ...result, invoice_s3_key: result.s3_key }, resolutions);
         setStage("recorded");
         const msg = res.new_items_created.length > 0
           ? `Invoice recorded. New item(s) added: ${res.new_items_created.join(", ")}`

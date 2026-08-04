@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Optional
 import boto3
 from botocore.config import Config
@@ -21,3 +22,13 @@ def get_s3_presigned_url(s3_key: Optional[str], expires_in: int = 3600) -> Optio
     except Exception as e:
         logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
         return None
+
+
+def upload_document_to_s3(image_bytes: bytes, mime_type: str, schema: str, doc_type: str) -> str:
+    settings = get_settings()
+    s3 = boto3.client("s3", region_name=settings.aws_region)
+    ext = mime_type.split("/")[-1] if "/" in mime_type else "jpg"
+    key = f"{doc_type}/{schema}/{uuid.uuid4()}.{ext}"
+    s3.put_object(Bucket=settings.s3_bucket_name, Key=key, Body=image_bytes, ContentType=mime_type)
+    return key
+

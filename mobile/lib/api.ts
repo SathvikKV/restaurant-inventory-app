@@ -182,7 +182,7 @@ export async function getAIRecommendations(token: string) {
 }
 
 export type LineItem = { item_name: string; quantity: number; unit: string; unit_price?: number; total_price?: number };
-export type OCRResult = { invoice_number?: string; supplier_name?: string; invoice_date?: string; line_items: LineItem[]; total_amount?: number; confidence_notes?: string };
+export type OCRResult = { invoice_number?: string; supplier_name?: string; invoice_date?: string; line_items: LineItem[]; total_amount?: number; confidence_notes?: string; s3_key?: string | null };
 
 export async function uploadInvoice(token: string, imageUri: string, mimeType: string): Promise<OCRResult> {
   const formData = new FormData();
@@ -229,7 +229,7 @@ export async function classifyDocument(token: string, imageUri: string, mimeType
 }
 
 export type IndentLineItem = { item_name: string; quantity: number; unit: string };
-export type IndentOCRResult = { section?: string | null; line_items: IndentLineItem[] };
+export type IndentOCRResult = { section?: string | null; line_items: IndentLineItem[]; s3_key?: string | null };
 
 export async function uploadIndent(token: string, imageUri: string, mimeType: string): Promise<IndentOCRResult> {
   const formData = new FormData();
@@ -250,7 +250,7 @@ export async function uploadIndent(token: string, imageUri: string, mimeType: st
   return res.json();
 }
 
-export async function saveOCRIndent(token: string, data: { section?: string | null; indent_number?: string; indent_s3_key?: string; line_items: IndentLineItem[]; resolutions?: Record<string, any> }) {
+export async function saveOCRIndent(token: string, data: { section?: string | null; indent_number?: string; indent_s3_key?: string | null; line_items: IndentLineItem[]; resolutions?: Record<string, any> }) {
   return request<{ accepted: string[]; denied: { item: string; reason: string; available?: number }[] }>(
     "/issues/from-ocr", { method: "POST", body: JSON.stringify(data) }, token
   );

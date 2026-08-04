@@ -12,6 +12,7 @@ from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import get_tenant_models, require_schema
 from app.config import get_settings
+from app.services.s3_service import upload_document_to_s3
 
 logger = logging.getLogger("app.routers.ai")
 router = APIRouter()
@@ -43,6 +44,7 @@ class OCRResult(BaseModel):
     line_items: List[OCRLineItem]
     total_amount: Optional[float] = None
     confidence_notes: Optional[str] = None
+    s3_key: Optional[str] = None
 
 class RecipeIngredientOut(BaseModel):
     name: str
@@ -71,6 +73,7 @@ class IndentLineItem(BaseModel):
 class IndentOCRResult(BaseModel):
     section: Optional[str] = None
     line_items: List[IndentLineItem]
+    s3_key: Optional[str] = None
 
 
 def _get_gemini():
@@ -193,6 +196,13 @@ async def ocr_invoice(
         model = genai.GenerativeModel("gemini-2.5-flash")
 
         image_bytes = await file.read()
+        s3_key = None
+        try:
+            schema = user.get("schema", "default")
+            s3_key = await asyncio.to_thread(upload_document_to_s3, image_bytes, file.content_type or "image/jpeg", schema, "invoices")
+        except Exception as e:
+            logger.warning(f"Failed to upload invoice document to S3: {e}")
+
         import base64
         image_b64 = base64.b64encode(image_bytes).decode()
 
@@ -233,6 +243,7 @@ async def ocr_invoice(
             invoice_date=data.get("invoice_date"),
             line_items=[OCRLineItem(**item) for item in data.get("line_items", [])],
             total_amount=data.get("total_amount"),
+            s3_key=s3_key,
         )
     except HTTPException:
         raise
@@ -292,6 +303,13 @@ async def ocr_indent(
     try:
         model = _get_gemini()
         image_bytes = await file.read()
+        s3_key = None
+        try:
+            schema = user.get("schema", "default")
+            s3_key = await asyncio.to_thread(upload_document_to_s3, image_bytes, file.content_type or "image/jpeg", schema, "indents")
+        except Exception as e:
+            logger.warning(f"Failed to upload indent document to S3: {e}")
+
         image_b64 = base64.b64encode(image_bytes).decode()
         prompt = """Extract kitchen indent (internal stock transfer / requisition slip) data from this image. Notice there are usually no prices, just items requested or issued to a kitchen section or station. Return ONLY valid JSON with this structure:
 {
@@ -315,6 +333,7 @@ async def ocr_indent(
         return IndentOCRResult(
             section=data.get("section"),
             line_items=[IndentLineItem(**item) for item in data.get("line_items", [])],
+            s3_key=s3_key,
         )
     except HTTPException:
         raise
