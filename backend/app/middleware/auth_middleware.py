@@ -1,10 +1,15 @@
-from fastapi import Depends, HTTPException, status, Request
+from typing import Optional
+import hmac
+from fastapi import Depends, HTTPException, status, Request, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.services.auth_service import decode_access_token
+from app.config import get_settings
 import logging
 
 logger = logging.getLogger("app.auth")
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
+settings = get_settings()
 
 async def get_current_user(
     request: Request,
@@ -23,6 +28,21 @@ async def get_current_user(
     except Exception as e:
         logger.error(f"[AUTH] Token decode failed: {type(e).__name__}: {e}")
         raise
+
+async def get_current_actor(
+    request: Request,
+    x_mise_service_token: Optional[str] = Header(None),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional),
+) -> dict:
+    if x_mise_service_token:
+        if not settings.mise_service_secret or not hmac.compare_digest(x_mise_service_token, settings.mise_service_secret):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing service token")
+        return {"actor_type": "mise_service"}  # schema/recorded_by must come from the request body in this case
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    user = await get_current_user(request, credentials)
+    user["actor_type"] = "user"
+    return user
 
 async def require_owner(user: dict = Depends(get_current_user)) -> dict:
     if user.get("role") != "owner":

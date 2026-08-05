@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     whatsapp_phone_number_id: str = ""
     whatsapp_verify_token: str = ""
     sync_secret: str = ""  # shared secret for Mise → Kosh sync calls
+    mise_service_secret: str = ""  # shared secret for service-to-service authentication between Mise and Kosh
 
     class Config:
         env_file = ".env"

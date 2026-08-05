@@ -14,7 +14,7 @@ from app.config import get_settings
 from app.database import Base, engine
 from app.models.public import Tenant
 from app.services.tenant_registry import get_tenant_models
-from app.routers import auth, restaurants, inventory, purchase_orders, wastage, users, ai, reports, sync, recipes, issues, confirmations
+from app.routers import auth, restaurants, inventory, purchase_orders, wastage, users, ai, reports, sync, recipes, issues, confirmations, tenants, bridge
 
 settings = get_settings()
 
@@ -97,7 +97,10 @@ app.include_router(sync.router,            prefix=f"{API_PREFIX}/sync",         
 app.include_router(recipes.router,         prefix=f"{API_PREFIX}/recipes",         tags=["Recipes"])
 app.include_router(issues.router,          prefix=f"{API_PREFIX}/issues",          tags=["Issues"])
 app.include_router(confirmations.router,   prefix=f"{API_PREFIX}/confirmations",   tags=["Confirmations"])
-
+app.include_router(tenants.router,         prefix=f"{API_PREFIX}/tenants",         tags=["Tenants"])
+app.include_router(bridge.router,          prefix=f"{API_PREFIX}/bridge",          tags=["Bridge"])
+app.include_router(tenants.router,         prefix="/tenants",                      tags=["Tenants (Root)"])
+app.include_router(bridge.router,          prefix="/bridge",                       tags=["Bridge (Root)"])
 
 # ---------------------------------------------------------------------------
 # Health check
