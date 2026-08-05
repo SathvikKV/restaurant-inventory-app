@@ -1,10 +1,12 @@
 import uuid
 import re
+from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, text
 from app.models.public import Tenant, User
 from app.models.tenant import make_tenant_models
 from app.database import create_tenant_schema, engine, Base
+from app.services.tenant_registry import get_tenant_models
 import logging
 import httpx
 from app.config import get_settings
@@ -129,3 +131,99 @@ async def get_tenants_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[Ten
         .where(User.id == user_id, Tenant.is_active == True)
     )
     return result.scalars().all()
+
+
+async def find_identity_by_phone(db: AsyncSession, phone: str) -> Optional[Dict[str, Any]]:
+    """Look up a user or staff contact across all tenants by phone number."""
+    user_result = await db.execute(select(User).where(User.phone == phone, User.is_active == True))
+    user = user_result.scalar_one_or_none()
+    if user and user.tenant_id:
+        tenant = await db.get(Tenant, user.tenant_id)
+        if tenant and tenant.is_active:
+            role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+            return {
+                "tenant_id": str(tenant.id),
+                "schema": tenant.schema_name,
+                "spreadsheet_id": tenant.spreadsheet_id,
+                "name": user.name,
+                "role": role_str,
+                "source": "user",
+                "contact_id": str(user.id),
+                "entity": user,
+            }
+
+    tenants_result = await db.execute(select(Tenant).where(Tenant.is_active == True))
+    tenants = tenants_result.scalars().all()
+
+    tables_res = await db.execute(
+        text("SELECT table_schema FROM information_schema.tables WHERE table_name = 'staff_contacts'")
+    )
+    valid_schemas = {row[0] for row in tables_res.all()}
+
+    for tenant in tenants:
+        if tenant.schema_name not in valid_schemas:
+            continue
+        models = get_tenant_models(tenant.schema_name)
+        StaffContact = models["staff_contacts"]
+        contact_res = await db.execute(select(StaffContact).where(StaffContact.phone == phone))
+        contact = contact_res.scalar_one_or_none()
+        if contact:
+            return {
+                "tenant_id": str(tenant.id),
+                "schema": tenant.schema_name,
+                "spreadsheet_id": tenant.spreadsheet_id,
+                "name": contact.name,
+                "role": contact.role_label,
+                "source": "staff_contact",
+                "contact_id": str(contact.id),
+                "entity": contact,
+            }
+    return None
+
+
+async def find_identity_by_telegram_id(db: AsyncSession, telegram_id: str) -> Optional[Dict[str, Any]]:
+    """Look up a user or staff contact across all tenants by Telegram user ID."""
+    user_result = await db.execute(select(User).where(User.telegram_id == telegram_id, User.is_active == True))
+    user = user_result.scalar_one_or_none()
+    if user and user.tenant_id:
+        tenant = await db.get(Tenant, user.tenant_id)
+        if tenant and tenant.is_active:
+            role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+            return {
+                "tenant_id": str(tenant.id),
+                "schema": tenant.schema_name,
+                "spreadsheet_id": tenant.spreadsheet_id,
+                "name": user.name,
+                "role": role_str,
+                "source": "user",
+                "contact_id": str(user.id),
+                "entity": user,
+            }
+
+    tenants_result = await db.execute(select(Tenant).where(Tenant.is_active == True))
+    tenants = tenants_result.scalars().all()
+
+    tables_res = await db.execute(
+        text("SELECT table_schema FROM information_schema.tables WHERE table_name = 'staff_contacts'")
+    )
+    valid_schemas = {row[0] for row in tables_res.all()}
+
+    for tenant in tenants:
+        if tenant.schema_name not in valid_schemas:
+            continue
+        models = get_tenant_models(tenant.schema_name)
+        StaffContact = models["staff_contacts"]
+        contact_res = await db.execute(select(StaffContact).where(StaffContact.telegram_id == telegram_id))
+        contact = contact_res.scalar_one_or_none()
+        if contact:
+            return {
+                "tenant_id": str(tenant.id),
+                "schema": tenant.schema_name,
+                "spreadsheet_id": tenant.spreadsheet_id,
+                "name": contact.name,
+                "role": contact.role_label,
+                "source": "staff_contact",
+                "contact_id": str(contact.id),
+                "entity": contact,
+            }
+    return None

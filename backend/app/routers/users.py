@@ -4,13 +4,15 @@ Users router — manage team members.
 import uuid
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from typing import List
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import require_schema, get_tenant_models
-from app.models.public import User
+from app.services.mise_auth import verify_mise_service_token
+from app.services.tenant_service import find_identity_by_phone
+from app.models.public import User, Tenant
 from app.schemas.common import UserResponse, UserCreate, UserUpdate
 from pydantic import BaseModel
 
@@ -18,6 +20,10 @@ class StaffContactCreate(BaseModel):
     name: str
     phone: str
     role_label: str
+
+class LinkTelegramRequest(BaseModel):
+    telegram_id: str
+    phone: str
 
 router = APIRouter()
 
@@ -175,3 +181,42 @@ async def list_staff_contacts(user: dict = Depends(get_current_user), db: AsyncS
     StaffContact = models["staff_contacts"]
     result = await db.execute(select(StaffContact))
     return [{"id": str(c.id), "name": c.name, "phone": c.phone, "role_label": c.role_label, "status": c.status} for c in result.scalars().all()]
+
+@router.post("/staff-contacts/{contact_id}/mark-connected", summary="Mark a staff contact as connected after WhatsApp interaction")
+async def mark_staff_contact_connected(contact_id: str, _: None = Depends(verify_mise_service_token), db: AsyncSession = Depends(get_db)):
+    tenants_res = await db.execute(select(Tenant).where(Tenant.is_active == True))
+    tenants = tenants_res.scalars().all()
+
+    tables_res = await db.execute(
+        text("SELECT table_schema FROM information_schema.tables WHERE table_name = 'staff_contacts'")
+    )
+    valid_schemas = {row[0] for row in tables_res.all()}
+
+    try:
+        contact_uuid = uuid.UUID(contact_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid contact ID format")
+
+    for tenant in tenants:
+        if tenant.schema_name not in valid_schemas:
+            continue
+        models = get_tenant_models(tenant.schema_name)
+        StaffContact = models["staff_contacts"]
+        contact = await db.get(StaffContact, contact_uuid)
+        if contact:
+            contact.status = "connected"
+            await db.commit()
+            return {"status": "ok", "contact_id": contact_id, "schema": tenant.schema_name}
+
+    raise HTTPException(status_code=404, detail="Staff contact not found")
+
+
+@router.post("/link-telegram-id", summary="Link a Telegram user ID to an existing staff contact or user via phone lookup")
+async def link_telegram_id(body: LinkTelegramRequest, _: None = Depends(verify_mise_service_token), db: AsyncSession = Depends(get_db)):
+    identity = await find_identity_by_phone(db, body.phone)
+    if not identity:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Phone number not recognized")
+    entity = identity["entity"]
+    entity.telegram_id = body.telegram_id
+    await db.commit()
+    return {"status": "linked", "name": identity["name"] or "", "schema": identity["schema"]}

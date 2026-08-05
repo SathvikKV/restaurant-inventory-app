@@ -1,6 +1,7 @@
 """
 Kosh Backend — FastAPI application entry point.
 """
+import os
 import time
 import logging
 from contextlib import asynccontextmanager
@@ -29,18 +30,19 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    try:
-        async with AsyncSession(engine) as session:
-            result = await session.execute(select(Tenant.schema_name))
-            schema_names = [row[0] for row in result.all()]
+    if not os.environ.get("SKIP_TENANT_SYNC_BOOT"):
+        try:
+            async with AsyncSession(engine) as session:
+                result = await session.execute(select(Tenant.schema_name))
+                schema_names = [row[0] for row in result.all()]
 
-        for schema_name in schema_names:
-            get_tenant_models(schema_name)  # registers this tenant's classes onto Base.metadata
+            for schema_name in schema_names:
+                get_tenant_models(schema_name)  # registers this tenant's classes onto Base.metadata
 
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)  # now creates any newly-added tables for every existing tenant
-    except Exception as e:
-        logging.getLogger("app.startup").error(f"Self-heal tenant table sync failed (app will still boot): {e}")
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)  # now creates any newly-added tables for every existing tenant
+        except Exception as e:
+            logging.getLogger("app.startup").error(f"Self-heal tenant table sync failed (app will still boot): {e}")
 
     yield
 

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.middleware.auth_middleware import get_current_user
+from app.middleware.auth_middleware import get_current_user, get_current_actor
 from app.services.tenant_registry import get_tenant_models
 from app.services.s3_service import get_s3_presigned_url
 from app.services.transaction_log import log_transaction
@@ -119,28 +119,39 @@ class IndentSaveRequest(BaseModel):
     indent_s3_key: Optional[str] = None
     line_items: List[IndentLineItemIn]
     resolutions: Optional[dict] = None
+    tenant_schema: Optional[str] = None
+    recorded_by_name: Optional[str] = None
 
 
 @router.post("/from-ocr", summary="Save an OCR-extracted kitchen indent and deduct inventory")
 async def create_issue_from_ocr(
     body: IndentSaveRequest,
-    user: dict = Depends(get_current_user),
+    actor: dict = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db)
 ):
-    schema = user.get("schema")
-    if not schema:
-        raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+    if actor.get("actor_type") == "mise_service":
+        if not body.tenant_schema or not body.recorded_by_name:
+            raise HTTPException(status_code=400, detail="tenant_schema and recorded_by_name are required for service-authenticated requests")
+        schema = body.tenant_schema
+        recorded_by_name = body.recorded_by_name
+        from app.models.public import Tenant
+        tenant_res = await db.execute(select(Tenant).where(Tenant.schema_name == schema))
+        tenant_record = tenant_res.scalar_one_or_none()
+        spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
+    else:
+        schema = actor.get("schema")
+        if not schema:
+            raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+        from app.models.public import User, Tenant
+        user_record = await db.get(User, uuid.UUID(actor["user_id"]))
+        tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+        spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
+        recorded_by_name = getattr(user_record, "name", None) if user_record else actor["user_id"]
+        if not recorded_by_name:
+            recorded_by_name = actor["user_id"]
+
     models = get_tenant_models(schema)
     InventoryItem, Issue, PendingConfirmation = models["inventory"], models["issues"], models["confirmations"]
-
-    from app.models.public import User, Tenant
-    user_record = await db.get(User, uuid.UUID(user["user_id"]))
-    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
-    spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
-
-    recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
-    if not recorded_by_name:
-        recorded_by_name = user["user_id"]
 
     inv_res = await db.execute(select(InventoryItem))
     existing_items = list(inv_res.scalars().all())

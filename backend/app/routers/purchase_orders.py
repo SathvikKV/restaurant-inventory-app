@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Literal
 
 from app.database import get_db
-from app.middleware.auth_middleware import get_current_user
+from app.middleware.auth_middleware import get_current_user, get_current_actor
 from app.services.tenant_registry import get_tenant_models
 from app.services.embeddings import get_embedding, cosine_similarity
 from app.services.transaction_log import log_transaction
@@ -250,6 +250,8 @@ class SaveOCRInvoiceRequest(BaseModel):
     total_amount: Optional[float] = None
     invoice_s3_key: Optional[str] = None
     resolutions: Optional[Dict[str, dict]] = None
+    tenant_schema: Optional[str] = None
+    recorded_by_name: Optional[str] = None
 
 class PreviewLineItem(BaseModel):
     item_name: str
@@ -325,22 +327,28 @@ async def preview_match(body: PreviewMatchRequest, user: dict = Depends(get_curr
 @router.post("/from-ocr", summary="Save an OCR-extracted invoice, update inventory, and sync to Mise")
 async def create_purchase_from_ocr(
     body: SaveOCRInvoiceRequest,
-    user: dict = Depends(get_current_user),
+    actor: dict = Depends(get_current_actor),
     db: AsyncSession = Depends(get_db),
 ):
-    schema = user.get("schema")
-    if not schema:
-        raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+    if actor.get("actor_type") == "mise_service":
+        if not body.tenant_schema or not body.recorded_by_name:
+            raise HTTPException(status_code=400, detail="tenant_schema and recorded_by_name are required for service-authenticated requests")
+        schema = body.tenant_schema
+        recorded_by_name = body.recorded_by_name
+    else:
+        schema = actor.get("schema")
+        if not schema:
+            raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+        from app.models.public import User
+        user_record = await db.get(User, uuid.UUID(actor["user_id"]))
+        recorded_by_name = getattr(user_record, "name", None) if user_record else actor["user_id"]
+        if not recorded_by_name:
+            recorded_by_name = actor["user_id"]
+
     models = get_tenant_models(schema)
     InventoryItem = models["inventory"]
     Purchase = models["purchases"]
     PendingConfirmation = models["confirmations"]
-
-    from app.models.public import User
-    user_record = await db.get(User, uuid.UUID(user["user_id"]))
-    recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
-    if not recorded_by_name:
-        recorded_by_name = user["user_id"]
 
     new_items_created = []
     sync_calls = []
@@ -480,4 +488,4 @@ async def create_purchase_from_ocr(
             unit=disp_unit, recorded_by=recorded_by_name, supplier=body.supplier_name or "Kosh App"
         ))
 
-    return {"status": "ok", "new_items_created": new_items_created}
+    return {"status": "ok", "new_items_created": new_items_created, "created_items": [line.item_name for line in body.line_items]}

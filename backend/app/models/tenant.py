@@ -102,6 +102,7 @@ def make_tenant_models(schema: str) -> dict:
         id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
         name: Mapped[str] = mapped_column(String(255), nullable=False)
         phone: Mapped[str] = mapped_column(String(20), nullable=False)
+        telegram_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
         role_label: Mapped[str] = mapped_column(String(50), nullable=False)
         status: Mapped[str] = mapped_column(String(30), default="pending_whatsapp_connection")
         created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
