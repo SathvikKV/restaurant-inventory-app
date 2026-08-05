@@ -369,6 +369,9 @@ async def create_purchase_from_ocr(
     source_ref = body.invoice_s3_key or str(purchase_record.id)
 
     resolutions = body.resolutions or {}
+    saved_items = []
+    review_items = []
+
     for line in body.line_items:
         line.quantity, line.unit = normalize_to_base(line.quantity, line.unit)
         res = resolutions.get(line.item_name)
@@ -427,8 +430,11 @@ async def create_purchase_from_ocr(
                     db.add(PendingConfirmation(
                         extracted_name=line.item_name, candidate_name=best_item.item,
                         score=score, quantity=line.quantity, unit=line.unit, source="app",
+                        source_reference=source_ref,
                     ))
                 resolved_unit = line.unit
+                disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
+                review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "candidate": best_item.item, "score": float(score)})
             else:
                 best_item.previous_qty = best_item.current_qty
                 best_item.current_qty += line.quantity
@@ -457,8 +463,11 @@ async def create_purchase_from_ocr(
                     quantity=line.quantity,
                     unit=line.unit,
                     source="app",
+                    source_reference=source_ref,
                 ))
             resolved_unit = line.unit
+            disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
+            review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "candidate": best_item.item, "score": float(score)})
         else:
             new_inv = InventoryItem(
                 item=line.item_name, unit=line.unit, current_qty=line.quantity,
@@ -483,9 +492,16 @@ async def create_purchase_from_ocr(
     from app.services.mise_writeback import push_to_mise
     for call in sync_calls:
         disp_qty, disp_unit = to_display_pair(call["quantity"], call["unit"])
+        saved_items.append({"item_name": call["item_name"], "quantity": disp_qty, "unit": disp_unit})
         asyncio.create_task(push_to_mise(
             action="receive", item_name=call["item_name"], quantity=disp_qty,
             unit=disp_unit, recorded_by=recorded_by_name, supplier=body.supplier_name or "Kosh App"
         ))
 
-    return {"status": "ok", "new_items_created": new_items_created, "created_items": [line.item_name for line in body.line_items]}
+    return {
+        "status": "ok",
+        "new_items_created": new_items_created,
+        "created_items": [line.item_name for line in body.line_items],
+        "saved_items": saved_items,
+        "review_items": review_items,
+    }

@@ -63,7 +63,7 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
             await log_transaction(
                 db, models, item_id=item.id, item_name=item.item, action="confirmation_resolved",
                 quantity_delta=norm_qty, resulting_qty=item.current_qty, unit=norm_unit,
-                recorded_by=recorded_by_name, source_reference=f"Confirmation #{confirmation.id}"
+                recorded_by=recorded_by_name, source_reference=confirmation.source_reference or f"Confirmation #{confirmation.id}"
             )
     else:
         new_inv = InventoryItem(item=confirmation.extracted_name, unit=norm_unit, current_qty=norm_qty,
@@ -74,7 +74,7 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
         await log_transaction(
             db, models, item_id=new_inv.id, item_name=new_inv.item, action="confirmation_resolved",
             quantity_delta=norm_qty, resulting_qty=new_inv.current_qty, unit=new_inv.unit,
-            recorded_by=recorded_by_name, source_reference=f"Confirmation #{confirmation.id}"
+            recorded_by=recorded_by_name, source_reference=confirmation.source_reference or f"Confirmation #{confirmation.id}"
         )
 
     confirmation.status = "resolved"

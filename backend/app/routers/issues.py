@@ -174,6 +174,7 @@ async def create_issue_from_ocr(
 
     resolutions = body.resolutions or {}
     accepted, denied = [], []
+    saved_items, review_items = [], []
     sync_calls = []
 
     for line in body.line_items:
@@ -190,6 +191,8 @@ async def create_issue_from_ocr(
                 if target_item:
                     if target_item.current_qty < line.quantity:
                         denied.append({"item": line.item_name, "reason": "Insufficient stock", "available": target_item.current_qty})
+                        disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
+                        review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": "Insufficient stock", "candidate": target_item.item, "score": 1.0})
                         continue
                     target_item.previous_qty = target_item.current_qty
                     target_item.current_qty -= line.quantity
@@ -202,8 +205,12 @@ async def create_issue_from_ocr(
                     sync_calls.append({"item_name": target_item.item, "quantity": line.quantity, "unit": target_item.unit})
                 else:
                     denied.append({"item": line.item_name, "reason": "Target item not found"})
+                    disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
+                    review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": "Target item not found"})
             elif res.get("same") is False:
                 denied.append({"item": line.item_name, "reason": "Marked as different item (cannot issue uncreated stock)"})
+                disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
+                review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": "Cannot issue uncreated stock"})
             continue
 
         best_item, score = await _best_match_semantic(line.item_name, existing_items)
@@ -211,6 +218,8 @@ async def create_issue_from_ocr(
         if score >= 0.95 and best_item and best_norm_unit.strip().lower() == line.unit.strip().lower():
             if best_item.current_qty < line.quantity:
                 denied.append({"item": line.item_name, "reason": "Insufficient stock", "available": best_item.current_qty})
+                disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
+                review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": "Insufficient stock", "candidate": best_item.item, "score": float(score)})
                 continue
             best_item.previous_qty = best_item.current_qty
             best_item.current_qty -= line.quantity
@@ -236,19 +245,24 @@ async def create_issue_from_ocr(
                     quantity=line.quantity,
                     unit=line.unit,
                     source="app_indent",
+                    source_reference=source_ref,
                 ))
-            denied.append({"item": line.item_name, "reason": "Needs review" if best_item else "Item not found"})
+            reason_str = "Needs review" if (best_item and score >= 0.80) else "Item not found"
+            denied.append({"item": line.item_name, "reason": reason_str})
+            disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
+            review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": reason_str, "candidate": best_item.item if (best_item and score >= 0.80) else None, "score": float(score) if (best_item and score >= 0.80) else 0.0})
 
     await db.commit()
 
     from app.services.mise_writeback import push_to_mise
     for call in sync_calls:
         disp_qty, disp_unit = to_display_pair(call["quantity"], call["unit"])
+        saved_items.append({"item_name": call["item_name"], "quantity": disp_qty, "unit": disp_unit})
         asyncio.create_task(push_to_mise(
             action="issue", item_name=call["item_name"], quantity=disp_qty,
             unit=disp_unit, recorded_by=recorded_by_name, destination=body.section or "Kitchen",
             spreadsheet_id=spreadsheet_id
         ))
 
-    return {"accepted": accepted, "denied": denied}
+    return {"accepted": accepted, "denied": denied, "saved_items": saved_items, "review_items": review_items}
 
