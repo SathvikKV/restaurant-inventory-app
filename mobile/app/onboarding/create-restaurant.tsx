@@ -26,6 +26,7 @@ export default function CreateRestaurantScreen() {
         tenantId: restaurant.id,
         schema: selected.schema,
         restaurantName: selected.restaurant_name,
+        role: selected.role || "owner",
         needsRestaurantSelection: false,
       });
       router.push("/onboarding/connect-team");

@@ -23,7 +23,8 @@ export default function MoreScreen() {
   const [profile, setProfile] = useState<{ name: string; phone: string; role: string } | null>(null);
 
   const isActualOwner = (profile?.role || auth.role || "").toLowerCase() === "owner";
-  const effectiveRole = isActualOwner && auth.viewMode === "manager" ? "manager" : (auth.role || "manager").toLowerCase();
+  const actualRole = isActualOwner ? "owner" : (auth.role || "manager").toLowerCase();
+  const effectiveRole = isActualOwner && auth.viewMode === "manager" ? "manager" : actualRole;
 
   const filteredMenuItems = MENU_ITEMS.filter(item => {
     if (effectiveRole !== "owner" && (item.label === "Team Management" || item.label === "Workspace Settings")) {
@@ -38,9 +39,12 @@ export default function MoreScreen() {
       try {
         const me = await getMe(auth.token!);
         setProfile({ name: me.name, phone: me.phone, role: me.role });
+        if (me.role && me.role.toLowerCase() !== (auth.role || "").toLowerCase()) {
+          saveAuth({ ...auth, role: me.role.toLowerCase() });
+        }
       } catch {}
     })();
-  }, [auth.token]);
+  }, [auth.token, auth.role]);
 
   function handleLogout() {
     clearAuth();

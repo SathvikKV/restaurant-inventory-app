@@ -131,9 +131,10 @@ async def select_restaurant(
     if not db_user:
         raise HTTPException(status_code=403, detail="You do not have access to this restaurant")
 
+    user_role = db_user.role.value if hasattr(db_user.role, 'value') else db_user.role
     access_token = create_access_token(
         user_id=str(db_user.id),
-        role=db_user.role.value if hasattr(db_user.role, 'value') else db_user.role,
+        role=user_role,
         tenant_id=str(tenant.id),
         schema_name=tenant.schema_name,
     )
@@ -143,6 +144,7 @@ async def select_restaurant(
         "tenant_id": str(tenant.id),
         "schema": tenant.schema_name,
         "restaurant_name": tenant.name,
+        "role": user_role,
     }
 
 

@@ -76,7 +76,7 @@ export async function linkSheet(token: string, restaurantId: string, sheetIdOrUr
 }
 
 export async function selectRestaurant(token: string, restaurantId: string) {
-  return request<{ access_token: string; schema: string; restaurant_name: string }>(
+  return request<{ access_token: string; schema: string; restaurant_name: string; role?: string }>(
     `/restaurants/${restaurantId}/select`,
     { method: "POST" },
     token

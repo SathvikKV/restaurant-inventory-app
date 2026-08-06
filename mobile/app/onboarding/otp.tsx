@@ -59,7 +59,7 @@ export default function OtpScreen() {
         await saveAuth({
           token: selected.access_token,
           userId: result.user_id,
-          role: result.role,
+          role: selected.role || result.role,
           tenantId: restaurants[0].id,
           schema: selected.schema,
           restaurantName: selected.restaurant_name,
