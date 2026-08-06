@@ -44,8 +44,13 @@ export default function OtpScreen() {
           schema: result.schema,
           restaurantName: null,
           needsRestaurantSelection: true,
+          userName: result.user_name || null,
         });
-        router.push("/onboarding/create-restaurant");
+        if (result.is_new_account) {
+          router.push("/onboarding/name");
+        } else {
+          router.push("/onboarding/create-restaurant");
+        }
       } else {
         const baseToken = result.access_token;
         const restaurants = await listRestaurants(baseToken);
@@ -59,9 +64,15 @@ export default function OtpScreen() {
           schema: selected.schema,
           restaurantName: selected.restaurant_name,
           needsRestaurantSelection: false,
+          userName: result.user_name || null,
         });
-        router.replace("/(app)/home");
+        if (result.is_new_account) {
+          router.push("/onboarding/name");
+        } else {
+          router.replace("/(app)/home");
+        }
       }
+
     } catch (e: any) {
       Alert.alert("Error", e.message || "Invalid OTP");
     } finally {

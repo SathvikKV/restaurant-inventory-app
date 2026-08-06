@@ -61,6 +61,7 @@ export default function ActivityHistoryScreen() {
   const [entries, setEntries] = useState<ActivityFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState<string>("All");
+  const [selectedActorTab, setSelectedActorTab] = useState<string>("All Actors");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -113,10 +114,10 @@ export default function ActivityHistoryScreen() {
         contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
-        <Text style={{ fontSize: 36, fontWeight: "800", color: colors.textMain, letterSpacing: -1, marginBottom: 24 }}>Activity</Text>
+        <Text style={{ fontSize: 36, fontWeight: "800", color: colors.textMain, letterSpacing: -1, marginBottom: 16 }}>Activity</Text>
 
-        {/* Filter chips */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 24 }}>
+        {/* Action Filter chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
           <View style={{ flexDirection: "row", gap: 8 }}>
             {FILTER_TABS.map((tab) => {
               const active = selectedTab === tab.label;
@@ -140,6 +141,40 @@ export default function ActivityHistoryScreen() {
           </View>
         </ScrollView>
 
+        {/* Actor Filter chips */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 24 }}>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            {["All Actors", "Owner", "Manager", "System"].map((actor) => {
+              const active = selectedActorTab === actor;
+              let bg = colors.card;
+              let border = colors.border;
+              let textColor = colors.textMuted;
+              if (active) {
+                if (actor === "Owner") { bg = "#ECFDF5"; border = "#10B981"; textColor = "#065F46"; }
+                else if (actor === "Manager") { bg = "#EFF6FF"; border = "#3B82F6"; textColor = "#1E40AF"; }
+                else if (actor === "System") { bg = "#F5F3FF"; border = "#8B5CF6"; textColor = "#6B21A8"; }
+                else { bg = "#F4F5F7"; border = "#687076"; textColor = colors.textMain; }
+              }
+              return (
+                <TouchableOpacity
+                  key={actor}
+                  onPress={() => setSelectedActorTab(actor)}
+                  style={{
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 100,
+                    backgroundColor: bg,
+                    borderWidth: 1,
+                    borderColor: border,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "800", color: textColor }}>{actor}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+
         {loading ? (
           <View style={{ paddingTop: 60, alignItems: "center" }}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -150,35 +185,50 @@ export default function ActivityHistoryScreen() {
           </View>
         ) : (
           <View style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, padding: 24, gap: 28, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
-            {entries.map((act, idx, arr) => {
-              const dotColor = ACTION_COLORS[act.action?.toLowerCase()] || colors.primary;
-              const RowComponent = act.image_url ? TouchableOpacity : View;
-              const rowProps = act.image_url ? { onPress: () => setPreviewImage(act.image_url!) } : {};
-              const timeStr = act.created_at ? new Date(act.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
-              const dateStr = act.created_at ? new Date(act.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+            {entries
+              .filter((act) => selectedActorTab === "All Actors" || (act.actor_type || "manager").toLowerCase() === selectedActorTab.toLowerCase())
+              .map((act, idx, arr) => {
+                const dotColor = ACTION_COLORS[act.action?.toLowerCase()] || colors.primary;
+                const RowComponent = act.image_url ? TouchableOpacity : View;
+                const rowProps = act.image_url ? { onPress: () => setPreviewImage(act.image_url!) } : {};
+                const timeStr = act.created_at ? new Date(act.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+                const dateStr = act.created_at ? new Date(act.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+                
+                const actorType = (act.actor_type || "manager").toLowerCase();
+                const actorTagBg = actorType === "owner" ? "#ECFDF5" : actorType === "system" ? "#F5F3FF" : "#EFF6FF";
+                const actorTagBorder = actorType === "owner" ? "#A7F3D0" : actorType === "system" ? "#DDD6FE" : "#BFDBFE";
+                const actorTagColor = actorType === "owner" ? "#065F46" : actorType === "system" ? "#6B21A8" : "#1E40AF";
 
-              return (
-                <RowComponent key={act.id || idx} style={{ flexDirection: "row", gap: 16, position: "relative", alignItems: "center" }} {...rowProps}>
-                  {idx < arr.length - 1 && (
-                    <View style={{ position: "absolute", left: 7, top: 20, width: 2, bottom: -28, backgroundColor: colors.border }} />
-                  )}
-                  <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: dotColor, borderWidth: 3, borderColor: "white", marginTop: 2, zIndex: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, lineHeight: 20, marginBottom: 4, letterSpacing: -0.2 }}>
-                      {formatActivityDescription(act)}
-                    </Text>
-                    <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>
-                      {dateStr ? `${dateStr} at ${timeStr}` : timeStr} • {act.recorded_by || "Staff"} → now {formatForDisplay(act.resulting_qty, act.unit)}
-                    </Text>
-                  </View>
-                  {act.image_url && (
-                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: `${colors.primary}10`, alignItems: "center", justifyContent: "center" }}>
-                      <Maximize2 size={16} color={colors.primary} />
+                return (
+                  <RowComponent key={act.id || idx} style={{ flexDirection: "row", gap: 16, position: "relative", alignItems: "center" }} {...rowProps}>
+                    {idx < arr.length - 1 && (
+                      <View style={{ position: "absolute", left: 7, top: 20, width: 2, bottom: -28, backgroundColor: colors.border }} />
+                    )}
+                    <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: dotColor, borderWidth: 3, borderColor: "white", marginTop: 2, zIndex: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, lineHeight: 20, marginBottom: 6, letterSpacing: -0.2 }}>
+                        {formatActivityDescription(act)}
+                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <View style={{ backgroundColor: actorTagBg, borderColor: actorTagBorder, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 100 }}>
+                          <Text style={{ fontSize: 10, fontWeight: "800", color: actorTagColor }}>{actorType.toUpperCase()}</Text>
+                        </View>
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textMain }}>
+                          {act.recorded_by || "Staff"}
+                        </Text>
+                        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textMuted }}>
+                          • {dateStr ? `${dateStr} at ${timeStr}` : timeStr} → now {formatForDisplay(act.resulting_qty, act.unit)}
+                        </Text>
+                      </View>
                     </View>
-                  )}
-                </RowComponent>
-              );
-            })}
+                    {act.image_url && (
+                      <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: `${colors.primary}10`, alignItems: "center", justifyContent: "center" }}>
+                        <Maximize2 size={16} color={colors.primary} />
+                      </View>
+                    )}
+                  </RowComponent>
+                );
+              })}
           </View>
         )}
       </ScrollView>

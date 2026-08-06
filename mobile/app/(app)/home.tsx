@@ -42,11 +42,14 @@ export default function HomeScreen() {
         }));
       }
       if (audit.status === "fulfilled") setActivities(audit.value.entries || []);
-      if (me.status === "fulfilled" && me.value?.name) {
+      if (me.status === "fulfilled" && me.value?.name && me.value.name !== "None") {
         setUserName(me.value.name.split(" ")[0]);
+      } else if (auth.userName && auth.userName !== "None") {
+        setUserName(auth.userName.split(" ")[0]);
       } else {
-        setUserName((auth.restaurantName || "Minerva Coffee Shop").split(" ")[0]);
+        setUserName("Chef");
       }
+
       if (summ.status === "fulfilled" && summ.value) {
         setTodaySummary(summ.value);
       }

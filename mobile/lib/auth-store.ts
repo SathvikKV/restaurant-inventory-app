@@ -11,6 +11,8 @@ export type AuthState = {
   schema: string | null;
   restaurantName: string | null;
   needsRestaurantSelection: boolean;
+  userName?: string | null;
+  viewMode?: 'owner' | 'manager' | null;
 };
 
 const DEFAULT_STATE: AuthState = {
@@ -21,7 +23,11 @@ const DEFAULT_STATE: AuthState = {
   schema: null,
   restaurantName: null,
   needsRestaurantSelection: false,
+  userName: null,
+  viewMode: null,
 };
+
+
 
 // Module-level singleton — lives for the entire app session
 let _state: AuthState = { ...DEFAULT_STATE };

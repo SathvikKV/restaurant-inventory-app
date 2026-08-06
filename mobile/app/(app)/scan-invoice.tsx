@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useFocusEffect } from "expo-router";
 import { X, Camera, ImagePlus, Check, Package, HelpCircle } from "lucide-react-native";
@@ -39,15 +39,31 @@ export default function ScanInvoiceScreen() {
   const reviewNeeded = previewResults.filter((p) => p.match_status === "needs_review");
   const isAllResolved = reviewNeeded.every((item) => resolutions[item.item_name] !== undefined);
 
+  function handleUpdateLineItem(idx: number, field: string, value: string) {
+    if (docType === "kitchen_indent" && indentResult) {
+      const newItems = [...(indentResult.line_items || [])];
+      newItems[idx] = { ...newItems[idx], [field]: value };
+      setIndentResult({ ...indentResult, line_items: newItems });
+    } else if (result) {
+      const newItems = [...(result.line_items || [])];
+      newItems[idx] = { ...newItems[idx], [field]: value };
+      setResult({ ...result, line_items: newItems });
+    }
+  }
+
   async function handleConfirm() {
     if (!auth.token || stage === "recorded" || !isAllResolved) return;
     setSaving(true);
     if (docType === "kitchen_indent") {
       if (!indentResult) return;
       try {
+        const cleanLineItems = (indentResult.line_items || []).map((i: any) => ({
+          ...i,
+          quantity: typeof i.quantity === "string" ? parseFloat(i.quantity) || 0 : (i.quantity || 0),
+        }));
         const res = await saveOCRIndent(auth.token, {
           section: indentResult.section,
-          line_items: indentResult.line_items,
+          line_items: cleanLineItems,
           indent_s3_key: indentResult.s3_key,
           resolutions,
         });
@@ -63,7 +79,13 @@ export default function ScanInvoiceScreen() {
     } else {
       if (!result) return;
       try {
-        const res = await saveOCRInvoice(auth.token, { ...result, invoice_s3_key: result.s3_key }, resolutions);
+        const cleanLineItems = (result.line_items || []).map((i: any) => ({
+          ...i,
+          quantity: typeof i.quantity === "string" ? parseFloat(i.quantity) || 0 : (i.quantity || 0),
+          unit_price: typeof i.unit_price === "string" ? parseFloat(i.unit_price) || 0 : (i.unit_price || 0),
+          total_price: typeof i.total_price === "string" ? parseFloat(i.total_price) || 0 : (i.total_price || 0),
+        }));
+        const res = await saveOCRInvoice(auth.token, { ...result, line_items: cleanLineItems, invoice_s3_key: result.s3_key }, resolutions);
         setStage("recorded");
         const msg = res.new_items_created.length > 0
           ? `Invoice recorded. New item(s) added: ${res.new_items_created.join(", ")}`
@@ -297,20 +319,65 @@ export default function ScanInvoiceScreen() {
         )}
 
         {/* Line items */}
-        <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, marginBottom: 12, paddingHorizontal: 4, letterSpacing: -0.3 }}>Extracted Items</Text>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12, paddingHorizontal: 4 }}>
+          <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Extracted Items</Text>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textMuted }}>✏️ Tap quantity to edit</Text>
+        </View>
         <View style={{ backgroundColor: colors.card, borderRadius: 24, borderWidth: 1, borderColor: colors.border, overflow: "hidden", marginBottom: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
-          {(docType === "kitchen_indent" ? indentResult?.line_items || [] : result?.line_items || []).map((item: any, idx: number, arr: any[]) => (
-            <View key={idx} style={{ padding: 16, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: colors.border, flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: "#F4F5F7", alignItems: "center", justifyContent: "center" }}>
-                <Package size={20} color={colors.textMuted} strokeWidth={2} />
+          {(docType === "kitchen_indent" ? indentResult?.line_items || [] : result?.line_items || []).map((item: any, idx: number, arr: any[]) => {
+            const isAmbiguous = previewResults.some(p => p.item_name === item.item_name && p.match_status === "needs_review");
+            return (
+              <View key={idx} style={{ padding: 16, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: colors.border, gap: 12 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: isAmbiguous ? "#FFF7ED" : "#F4F5F7", borderWidth: 1, borderColor: isAmbiguous ? "#FED7AA" : colors.border, alignItems: "center", justifyContent: "center" }}>
+                      {isAmbiguous ? <HelpCircle size={18} color="#EA580C" /> : <Package size={18} color={colors.textMuted} strokeWidth={2} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain }}>{item.item_name}</Text>
+                      {isAmbiguous && (
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#EA580C", marginTop: 2 }}>Needs review — possible match to an existing item</Text>
+                      )}
+                    </View>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", gap: 12, alignItems: "center", backgroundColor: "#F9FAFC", padding: 10, borderRadius: 14, borderWidth: 1, borderColor: "#E2E8F0" }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted, marginBottom: 2 }}>Quantity</Text>
+                    <TextInput
+                      value={String(item.quantity !== undefined && item.quantity !== null ? item.quantity : "")}
+                      onChangeText={(val) => handleUpdateLineItem(idx, "quantity", val)}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      style={{ fontSize: 16, fontWeight: "800", color: colors.textMain, backgroundColor: "white", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted, marginBottom: 2 }}>Unit</Text>
+                    <TextInput
+                      value={String(item.unit || "")}
+                      onChangeText={(val) => handleUpdateLineItem(idx, "unit", val)}
+                      placeholder="kg/pkt"
+                      style={{ fontSize: 15, fontWeight: "700", color: colors.textMain, backgroundColor: "white", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                    />
+                  </View>
+                  {docType === "supplier_invoice" && (
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted, marginBottom: 2 }}>Total (₹)</Text>
+                      <TextInput
+                        value={String(item.total_price !== undefined && item.total_price !== null ? item.total_price : "")}
+                        onChangeText={(val) => handleUpdateLineItem(idx, "total_price", val)}
+                        keyboardType="decimal-pad"
+                        placeholder="₹0"
+                        style={{ fontSize: 15, fontWeight: "700", color: colors.textMain, backgroundColor: "white", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                      />
+                    </View>
+                  )}
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, marginBottom: 2 }}>{item.item_name}</Text>
-                <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>{item.quantity} {item.unit}{item.unit_price ? ` · ₹${item.unit_price}/${item.unit}` : ""}</Text>
-              </View>
-              {item.total_price && <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain }}>₹{item.total_price}</Text>}
-            </View>
-          ))}
+            );
+          })}
         </View>
       </ScrollView>
 

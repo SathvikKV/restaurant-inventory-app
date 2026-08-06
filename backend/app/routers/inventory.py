@@ -21,6 +21,7 @@ from app.schemas.inventory import (
     InventoryItemResponse, InventoryItemCreate, InventoryItemUpdate,
     StockAdjustRequest, StockIssueRequest, StockReceiveRequest,
 )
+from app.models.public import User
 from pydantic import BaseModel
 
 class MenuIngredient(BaseModel):
@@ -444,6 +445,43 @@ async def resolve_history_image_url(source_reference: Optional[str], models, db)
     return None
 
 
+async def get_tenant_users_map(tenant_id_str: Optional[str], db: AsyncSession) -> dict:
+    users_map = {"by_id": {}, "by_name": {}}
+    if not tenant_id_str:
+        return users_map
+    try:
+        t_uuid = uuid.UUID(tenant_id_str)
+        res = await db.execute(select(User).where(User.tenant_id == t_uuid))
+        for u in res.scalars().all():
+            users_map["by_id"][str(u.id)] = u
+            if u.name:
+                users_map["by_name"][u.name.lower().strip()] = u
+            if u.phone:
+                users_map["by_name"][u.phone] = u
+    except Exception:
+        pass
+    return users_map
+
+def resolve_actor_info(recorded_by: Optional[str], users_map: dict) -> tuple[str, str]:
+    if not recorded_by or recorded_by.lower() in ("unknown", "none", ""):
+        return "System (Auto)", "system"
+    rec = recorded_by.strip()
+    rec_lower = rec.lower()
+    if any(w in rec_lower for w in ("system", "bot", "auto", "mise", "kosh")):
+        return rec, "system"
+    if rec in users_map["by_id"]:
+        u = users_map["by_id"][rec]
+        role_val = u.role.value if hasattr(u.role, 'value') else str(u.role)
+        return (u.name or u.phone or ("Owner" if role_val == "owner" else "Manager")), role_val.lower()
+    if rec_lower in users_map["by_name"]:
+        u = users_map["by_name"][rec_lower]
+        role_val = u.role.value if hasattr(u.role, 'value') else str(u.role)
+        return (u.name or u.phone), role_val.lower()
+    if len(rec) == 36 and "-" in rec:
+        return "Team Member", "manager"
+    return rec, "manager"
+
+
 @router.get("/activity/all", summary="Tenant-wide chronological activity feed")
 async def get_all_activity(
     action: Optional[str] = None, limit: int = 100, offset: int = 0,
@@ -460,13 +498,16 @@ async def get_all_activity(
     stmt = stmt.offset(offset).limit(limit)
     result = await db.execute(stmt)
     rows = result.scalars().all()
+    
+    users_map = await get_tenant_users_map(user.get("tenant_id"), db)
     out = []
     for r in rows:
         image_url = await resolve_history_image_url(r.source_reference, models, db)
+        actor_name, actor_type = resolve_actor_info(r.recorded_by, users_map)
         out.append({
             "id": str(r.id), "item_name": r.item_name, "action": r.action,
             "quantity_delta": r.quantity_delta, "resulting_qty": r.resulting_qty, "unit": r.unit,
-            "notes": r.notes, "recorded_by": r.recorded_by, "image_url": image_url,
+            "notes": r.notes, "recorded_by": actor_name, "actor_type": actor_type, "image_url": image_url,
             "created_at": r.created_at.isoformat() if r.created_at else "",
         })
     return out
@@ -491,16 +532,19 @@ async def get_item_history(
         .limit(limit)
     )
     rows = result.scalars().all()
+    users_map = await get_tenant_users_map(user.get("tenant_id"), db)
     out = []
     for r in rows:
         image_url = await resolve_history_image_url(r.source_reference, models, db)
+        actor_name, actor_type = resolve_actor_info(r.recorded_by, users_map)
         out.append({
             "id": str(r.id),
             "action": r.action,
             "quantity_delta": r.quantity_delta,
             "resulting_qty": r.resulting_qty,
             "unit": r.unit,
-            "recorded_by": r.recorded_by,
+            "recorded_by": actor_name,
+            "actor_type": actor_type,
             "notes": r.notes,
             "source_reference": r.source_reference,
             "image_url": image_url,

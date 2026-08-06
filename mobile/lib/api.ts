@@ -40,6 +40,7 @@ export async function verifyOTP(phone: string, otp: string) {
     user_id: string;
     user_name: string;
     needs_restaurant_selection: boolean;
+    is_new_account?: boolean;
   }>("/auth/verify-otp", {
     method: "POST",
     body: JSON.stringify({ phone, otp }),
@@ -94,7 +95,19 @@ export async function getMe(token: string) {
   }>("/auth/me", { method: "GET" }, token);
 }
 
+export async function updateMe(token: string, name: string) {
+  return request<{
+    id: string;
+    name: string;
+    phone: string;
+    role: string;
+    tenant_id: string;
+    is_active: boolean;
+  }>("/auth/me", { method: "PATCH", body: JSON.stringify({ name }) }, token);
+}
+
 // Inventory
+
 export async function getInventory(
   token: string,
   params?: { category?: string; status?: string; search?: string }
@@ -340,9 +353,11 @@ export interface ActivityFeedItem {
   unit: string;
   notes?: string | null;
   recorded_by: string;
+  actor_type?: string;
   image_url?: string | null;
   created_at: string;
 }
+
 
 export async function getAllActivity(token: string, action?: string, limit = 100, offset = 0) {
   let url = `/inventory/activity/all?limit=${limit}&offset=${offset}`;

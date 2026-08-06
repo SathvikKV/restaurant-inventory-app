@@ -22,8 +22,13 @@ class TokenResponse(BaseModel):
     user_id: str
     user_name: str
     needs_restaurant_selection: bool = False
+    is_new_account: bool = False
+
+class UpdateProfileRequest(BaseModel):
+    name: str
 
 class SelectRestaurantRequest(BaseModel):
+
     restaurant_id: str
 
 class UserMeResponse(BaseModel):

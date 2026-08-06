@@ -7,7 +7,7 @@ from app.middleware.auth_middleware import get_current_user
 from app.schemas.auth import (
     SendOTPRequest, SendOTPResponse,
     VerifyOTPRequest, TokenResponse,
-    SelectRestaurantRequest, UserMeResponse,
+    SelectRestaurantRequest, UserMeResponse, UpdateProfileRequest,
 )
 from app.services.auth_service import (
     generate_otp, store_otp, verify_otp as verify_otp_code,
@@ -57,7 +57,7 @@ async def verify_otp(body: VerifyOTPRequest, db: AsyncSession = Depends(get_db))
     if not valid:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired OTP")
 
-    user = await get_or_create_user(db, body.phone)
+    user, is_new = await get_or_create_user(db, body.phone)
 
     # Get user's tenant if assigned
     tenant_id = ""
@@ -87,6 +87,7 @@ async def verify_otp(body: VerifyOTPRequest, db: AsyncSession = Depends(get_db))
         "user_id": str(user.id),
         "user_name": user.name or "",
         "needs_restaurant_selection": tenant_id == "",
+        "is_new_account": is_new,
     })
     # Set refresh token as httpOnly cookie
     response.set_cookie(
@@ -183,6 +184,30 @@ async def get_me(
         tenant_id=str(db_user.tenant_id) if db_user.tenant_id else "",
         is_active=db_user.is_active,
     )
+
+
+@router.patch("/me", response_model=UserMeResponse, summary="Update current authenticated user profile")
+@router.post("/me", response_model=UserMeResponse, summary="Update current authenticated user profile")
+async def update_me(
+    body: UpdateProfileRequest,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    db_user = await get_user_by_id(db, uuid.UUID(user["user_id"]))
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    db_user.name = body.name.strip() if body.name else None
+    await db.commit()
+    await db.refresh(db_user)
+    return UserMeResponse(
+        id=str(db_user.id),
+        name=db_user.name or "",
+        phone=db_user.phone,
+        role=db_user.role.value if hasattr(db_user.role, 'value') else db_user.role,
+        tenant_id=str(db_user.tenant_id) if db_user.tenant_id else "",
+        is_active=db_user.is_active,
+    )
+
 
 
 @router.post("/logout", summary="Invalidate refresh token")

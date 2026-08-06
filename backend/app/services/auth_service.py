@@ -67,20 +67,21 @@ async def verify_otp(db: AsyncSession, phone: str, code: str) -> bool:
 # User
 # ---------------------------------------------------------------------------
 
-async def get_or_create_user(db: AsyncSession, phone: str) -> User:
+async def get_or_create_user(db: AsyncSession, phone: str) -> tuple[User, bool]:
     """
-    Returns the existing user for this phone, or creates a new one.
+    Returns the existing user for this phone (user, False), or creates a new one (user, True).
     New users are created without a tenant — they must select/create one after login.
     """
     result = await db.execute(select(User).where(User.phone == phone))
     user = result.scalar_one_or_none()
     if user:
-        return user
+        return user, False
     user = User(phone=phone, name=None, role="manager")
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return user
+    return user, True
+
 
 async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> Optional[User]:
     result = await db.execute(select(User).where(User.id == user_id))
