@@ -59,9 +59,17 @@ export async function createRestaurant(
 }
 
 export async function listRestaurants(token: string) {
-  return request<{ id: string; name: string; schema_name: string; sheet_url: string | null }[]>(
+  return request<{ id: string; name: string; schema_name: string; sheet_url: string | null; service_account_email?: string | null }[]>(
     "/restaurants",
     { method: "GET" },
+    token
+  );
+}
+
+export async function linkSheet(token: string, restaurantId: string, sheetIdOrUrl: string) {
+  return request<{ status: string; sheet_url: string; spreadsheet_id: string }>(
+    `/restaurants/${restaurantId}/link-sheet`,
+    { method: "POST", body: JSON.stringify({ sheet_id_or_url: sheetIdOrUrl }) },
     token
   );
 }
@@ -73,6 +81,7 @@ export async function selectRestaurant(token: string, restaurantId: string) {
     token
   );
 }
+
 
 export async function getMe(token: string) {
   return request<{

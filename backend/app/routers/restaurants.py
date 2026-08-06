@@ -8,12 +8,15 @@ from app.models.public import Tenant, User
 from app.services.tenant_service import (
     create_tenant, assign_user_to_tenant,
     get_tenant_by_id, get_tenants_for_user,
+    extract_sheet_id, call_mise_link_existing_sheet,
 )
 from app.services.auth_service import create_access_token
+from app.config import get_settings
 from pydantic import BaseModel
 from typing import Optional
 
 router = APIRouter()
+settings = get_settings()
 
 
 class RestaurantCreate(BaseModel):
@@ -30,6 +33,12 @@ class RestaurantResponse(BaseModel):
     tenant_type: str
     is_active: bool
     sheet_url: Optional[str] = None
+    service_account_email: Optional[str] = None
+
+
+class LinkSheetRequest(BaseModel):
+    sheet_id_or_url: str
+    restaurant_id: Optional[str] = None
 
 
 @router.post("", response_model=RestaurantResponse, summary="Create a new restaurant")
@@ -52,6 +61,7 @@ async def create_restaurant(
         tenant_type=tenant.tenant_type.value,
         is_active=tenant.is_active,
         sheet_url=tenant.sheet_url,
+        service_account_email=settings.google_service_account_email,
     )
 
 
@@ -70,6 +80,7 @@ async def list_restaurants(
             tenant_type=t.tenant_type.value,
             is_active=t.is_active,
             sheet_url=t.sheet_url,
+            service_account_email=settings.google_service_account_email,
         )
         for t in tenants
     ]
@@ -91,6 +102,7 @@ async def get_restaurant(
         tenant_type=tenant.tenant_type.value,
         is_active=tenant.is_active,
         sheet_url=tenant.sheet_url,
+        service_account_email=settings.google_service_account_email,
     )
 
 
@@ -132,3 +144,49 @@ async def select_restaurant(
         "schema": tenant.schema_name,
         "restaurant_name": tenant.name,
     }
+
+
+@router.post("/link-sheet", summary="Link an existing Google Sheet to the restaurant")
+async def link_sheet(
+    body: LinkSheetRequest,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    tenant_id = body.restaurant_id or user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No restaurant specified. Please select a restaurant first."
+        )
+
+    tenant = await get_tenant_by_id(db, uuid.UUID(tenant_id))
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    sheet_id = extract_sheet_id(body.sheet_id_or_url)
+    if not sheet_id:
+        raise HTTPException(status_code=400, detail="Invalid Google Sheet ID or URL")
+
+    result = await call_mise_link_existing_sheet(sheet_id, tenant.name)
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=result.get("error", "Could not access that sheet. Make sure it's shared with the service account with edit access.")
+        )
+
+    tenant.spreadsheet_id = sheet_id
+    tenant.sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+    db.add(tenant)
+    await db.commit()
+    return {"status": "linked", "sheet_url": tenant.sheet_url, "spreadsheet_id": tenant.spreadsheet_id}
+
+
+@router.post("/{restaurant_id}/link-sheet", summary="Link an existing Google Sheet to a specific restaurant ID")
+async def link_sheet_by_id(
+    restaurant_id: str,
+    body: LinkSheetRequest,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body.restaurant_id = restaurant_id
+    return await link_sheet(body, user, db)

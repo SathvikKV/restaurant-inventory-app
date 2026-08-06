@@ -7,7 +7,7 @@ settings = get_settings()
 
 async def push_to_mise(action: str, item_name: str, quantity: float, unit: str,
                          recorded_by: str, spreadsheet_id: str = None, **extra) -> None:
-    if not settings.mise_writeback_url:
+    if not settings.mise_writeback_url or not spreadsheet_id:
         return
     payload = {"action": action, "item_name": item_name, "quantity": quantity,
                "unit": unit, "recorded_by": recorded_by, "spreadsheet_id": spreadsheet_id, **extra}

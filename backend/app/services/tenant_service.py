@@ -227,3 +227,33 @@ async def find_identity_by_telegram_id(db: AsyncSession, telegram_id: str) -> Op
                 "entity": contact,
             }
     return None
+
+
+def extract_sheet_id(url_or_id: str) -> str:
+    s = url_or_id.strip()
+    if "/spreadsheets/d/" in s:
+        parts = s.split("/spreadsheets/d/")[1]
+        return parts.split("/")[0].split("?")[0].split("#")[0]
+    return s
+
+
+async def call_mise_link_existing_sheet(sheet_id: str, tenant_name: str = None) -> dict:
+    settings = get_settings()
+    if not settings.mise_writeback_url:
+        return {"success": True}
+    link_url = settings.mise_writeback_url.rsplit('/kosh/write-back', 1)[0] + "/kosh/link-existing-sheet"
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(
+                link_url,
+                json={"sheet_id": sheet_id},
+                headers={"X-Sync-Token": settings.mise_inbound_secret},
+            )
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                return {"success": False, "error": f"Mise service returned status {resp.status_code}: {resp.text}"}
+    except Exception as e:
+        logger.error(f"Failed to link existing sheet {sheet_id}: {e}")
+        return {"success": False, "error": str(e)}
+

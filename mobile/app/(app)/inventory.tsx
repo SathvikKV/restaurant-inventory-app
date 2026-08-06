@@ -97,7 +97,7 @@ export default function InventoryScreen() {
       statusFilter === "Out of Stock" ? s.includes("out") : true;
     const matchesCat = categoryFilter === "All Categories" ? true : item.category === categoryFilter;
     return matchesStatus && matchesCat;
-  });
+  }).sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>

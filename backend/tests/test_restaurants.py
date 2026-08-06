@@ -23,3 +23,5 @@ def test_select_restaurant(client, auth_token, restaurant_id):
     data = r.json()
     assert "access_token" in data
     assert "schema" in data
+
+
