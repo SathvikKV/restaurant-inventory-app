@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { User, ArrowRight } from "lucide-react-native";
 import { MiseLogo, colors } from "../../components/ui";
 import { hydrateAuth } from "../../lib/auth-store";
+import { resetStackAndNavigate } from "../../lib/nav";
 
 function StorefrontIllustration() {
   return (
@@ -77,7 +78,7 @@ export default function WelcomeScreen() {
           <TouchableOpacity
             onPress={async () => {
               const auth = await hydrateAuth();
-              if (auth.token) router.replace("/(app)/home");
+              if (auth.token) resetStackAndNavigate("/(app)/home");
               else router.push("/onboarding/phone");
             }}
             activeOpacity={0.7}

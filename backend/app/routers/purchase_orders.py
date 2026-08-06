@@ -340,12 +340,18 @@ async def create_purchase_from_ocr(
             raise HTTPException(status_code=400, detail="tenant_schema and recorded_by_name are required for service-authenticated requests")
         schema = body.tenant_schema
         recorded_by_name = body.recorded_by_name
+        from app.models.public import Tenant
+        tenant_res = await db.execute(select(Tenant).where(Tenant.schema_name == schema))
+        tenant_record = tenant_res.scalar_one_or_none()
+        spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
     else:
         schema = actor.get("schema")
         if not schema:
             raise HTTPException(status_code=400, detail="User has no assigned restaurant")
-        from app.models.public import User
+        from app.models.public import User, Tenant
         user_record = await db.get(User, uuid.UUID(actor["user_id"]))
+        tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+        spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
         recorded_by_name = getattr(user_record, "name", None) if user_record else actor["user_id"]
         if not recorded_by_name:
             recorded_by_name = actor["user_id"]
@@ -500,7 +506,8 @@ async def create_purchase_from_ocr(
         saved_items.append({"item_name": call["item_name"], "quantity": disp_qty, "unit": disp_unit})
         asyncio.create_task(push_to_mise(
             action="receive", item_name=call["item_name"], quantity=disp_qty,
-            unit=disp_unit, recorded_by=recorded_by_name, supplier=body.supplier_name or "Kosh App"
+            unit=disp_unit, recorded_by=recorded_by_name, supplier=body.supplier_name or "Kosh App",
+            spreadsheet_id=spreadsheet_id
         ))
 
     return {

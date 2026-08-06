@@ -7,6 +7,7 @@ import { useAuth } from "../../lib/auth-context";
 import { clearAuth, saveAuth } from "../../lib/auth-store";
 import { getMe } from "../../lib/api";
 import { MiseLogo, colors } from "../../components/ui";
+import { resetStackAndNavigate } from "../../lib/nav";
 
 const MENU_ITEMS: { icon: any; label: string; bg: string; color: string; badge?: string | null; route?: string }[] = [
   { icon: User, label: "Account & Profile", bg: "#EEF2FF", color: "#4F46E5", route: "/(app)/profile" },
@@ -48,7 +49,7 @@ export default function MoreScreen() {
 
   function handleLogout() {
     clearAuth();
-    router.replace("/onboarding/welcome");
+    resetStackAndNavigate("/onboarding/welcome");
   }
 
   return (

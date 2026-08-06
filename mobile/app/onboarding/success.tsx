@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Check, Users, FileText, Menu } from "lucide-react-native";
 import { MiseLogo, colors } from "../../components/ui";
+import { resetStackAndNavigate } from "../../lib/nav";
 
 export default function SuccessScreen() {
   const { itemCount, newItems, error, recipesCreated, ingredientsSeeded } = useLocalSearchParams<{ itemCount?: string; newItems?: string; error?: string; recipesCreated?: string; ingredientsSeeded?: string }>();
@@ -51,7 +52,7 @@ export default function SuccessScreen() {
         </View>
 
         <TouchableOpacity
-          onPress={() => router.replace("/(app)/home")}
+          onPress={() => resetStackAndNavigate("/(app)/home")}
           activeOpacity={0.85}
           style={{ width: "100%", backgroundColor: colors.primary, borderRadius: 24, paddingVertical: 18, alignItems: "center", shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 4 }}
         >

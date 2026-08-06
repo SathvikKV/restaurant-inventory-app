@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft, ChevronDown } from "lucide-react-native";
 import { useAuth } from "../../lib/auth-context";
-import { listUsers, inviteUser } from "../../lib/api";
+import { listUsers, inviteUser, listStaffContacts, createStaffContact } from "../../lib/api";
 import { colors } from "../../components/ui";
 
 export default function TeamManagementScreen() {
@@ -15,7 +15,7 @@ export default function TeamManagementScreen() {
   const [phone, setPhone] = useState("");
   const [countryCode, setCountryCode] = useState("+91");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [role, setRole] = useState<"manager" | "owner">("manager");
+  const [role, setRole] = useState<"kitchen_staff" | "manager" | "owner">("kitchen_staff");
   const [inviting, setInviting] = useState(false);
 
   const COUNTRY_CODES = [
@@ -30,8 +30,17 @@ export default function TeamManagementScreen() {
     if (!auth.token) return;
     setLoading(true);
     try {
-      const data = await listUsers(auth.token);
-      setUsers(data);
+      const [userData, staffData] = await Promise.all([
+        listUsers(auth.token).catch(() => []),
+        listStaffContacts(auth.token).catch(() => []),
+      ]);
+      const mappedStaff = staffData.map((s: any) => ({
+        id: s.id || s.phone,
+        name: s.name,
+        phone: s.phone,
+        role: "Kitchen Staff",
+      }));
+      setUsers([...userData, ...mappedStaff]);
     } catch (e: any) {
       console.error("[TeamManagement] loadTeam failed:", e.message);
       Alert.alert("Error", e.message || "Failed to load team");
@@ -48,13 +57,19 @@ export default function TeamManagementScreen() {
     if (!name || !phone || !auth.token) return;
     setInviting(true);
     try {
-      await inviteUser(auth.token, `${countryCode}${phone}`, name, role);
-      Alert.alert("Success", "Invitation sent");
+      const fullPhone = `${countryCode}${phone}`;
+      if (role === "kitchen_staff") {
+        await createStaffContact(auth.token, fullPhone, name, "kitchen_staff");
+        Alert.alert("Success", "Staff member connected");
+      } else {
+        await inviteUser(auth.token, fullPhone, name, role);
+        Alert.alert("Success", "Invitation sent");
+      }
       setName("");
       setPhone("");
       loadTeam();
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to invite user");
+      Alert.alert("Error", e.message || "Failed to add member");
     } finally {
       setInviting(false);
     }
@@ -83,7 +98,7 @@ export default function TeamManagementScreen() {
                     <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain }}>{u.name || "Unknown"}</Text>
                     <Text style={{ fontSize: 13, color: colors.textMuted }}>{u.phone}</Text>
                   </View>
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.primary, textTransform: "capitalize" }}>{u.role}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: colors.primary, textTransform: "capitalize" }}>{u.role ? u.role.replace("_", " ") : ""}</Text>
                 </View>
               ))}
               {users.length === 0 && <Text style={{ color: colors.textMuted }}>No team members found.</Text>}
@@ -125,16 +140,19 @@ export default function TeamManagementScreen() {
                 />
               </View>
             </View>
-            <View style={{ flexDirection: "row", gap: 12 }}>
-              <TouchableOpacity onPress={() => setRole("manager")} style={{ flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: role === "manager" ? colors.primary : colors.border, backgroundColor: role === "manager" ? "#E8F0EC" : "white", alignItems: "center" }}>
-                <Text style={{ fontWeight: "700", color: role === "manager" ? colors.primary : colors.textMuted }}>Manager</Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity onPress={() => setRole("kitchen_staff")} style={{ flex: 1.2, paddingVertical: 12, paddingHorizontal: 4, borderRadius: 12, borderWidth: 1, borderColor: role === "kitchen_staff" ? colors.primary : colors.border, backgroundColor: role === "kitchen_staff" ? "#E8F0EC" : "white", alignItems: "center" }}>
+                <Text style={{ fontWeight: "700", fontSize: 13, color: role === "kitchen_staff" ? colors.primary : colors.textMuted }}>Kitchen Staff</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setRole("owner")} style={{ flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: role === "owner" ? colors.primary : colors.border, backgroundColor: role === "owner" ? "#E8F0EC" : "white", alignItems: "center" }}>
-                <Text style={{ fontWeight: "700", color: role === "owner" ? colors.primary : colors.textMuted }}>Owner</Text>
+              <TouchableOpacity onPress={() => setRole("manager")} style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 4, borderRadius: 12, borderWidth: 1, borderColor: role === "manager" ? colors.primary : colors.border, backgroundColor: role === "manager" ? "#E8F0EC" : "white", alignItems: "center" }}>
+                <Text style={{ fontWeight: "700", fontSize: 13, color: role === "manager" ? colors.primary : colors.textMuted }}>Manager</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setRole("owner")} style={{ flex: 1, paddingVertical: 12, paddingHorizontal: 4, borderRadius: 12, borderWidth: 1, borderColor: role === "owner" ? colors.primary : colors.border, backgroundColor: role === "owner" ? "#E8F0EC" : "white", alignItems: "center" }}>
+                <Text style={{ fontWeight: "700", fontSize: 13, color: role === "owner" ? colors.primary : colors.textMuted }}>Owner</Text>
               </TouchableOpacity>
             </View>
             <TouchableOpacity onPress={handleInvite} disabled={inviting || !name || !phone} style={{ backgroundColor: colors.primary, borderRadius: 16, padding: 16, alignItems: "center", marginTop: 8, opacity: inviting || !name || !phone ? 0.7 : 1 }}>
-              <Text style={{ color: "white", fontSize: 15, fontWeight: "800" }}>{inviting ? "Sending..." : "Send Invitation"}</Text>
+              <Text style={{ color: "white", fontSize: 15, fontWeight: "800" }}>{inviting ? "Saving..." : (role === "kitchen_staff" ? "Connect Staff" : "Send Invitation")}</Text>
             </TouchableOpacity>
           </View>
         </View>

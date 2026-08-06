@@ -6,6 +6,7 @@ import { ChevronLeft } from "lucide-react-native";
 import { verifyOTP, listRestaurants, selectRestaurant, requestOTP } from "../../lib/api";
 import { saveAuth } from "../../lib/auth-store";
 import { colors } from "../../components/ui";
+import { resetStackAndNavigate } from "../../lib/nav";
 
 export default function OtpScreen() {
   const { phone } = useLocalSearchParams<{ phone: string }>();
@@ -69,7 +70,7 @@ export default function OtpScreen() {
         if (result.is_new_account) {
           router.push("/onboarding/name");
         } else {
-          router.replace("/(app)/home");
+          resetStackAndNavigate("/(app)/home");
         }
       }
 

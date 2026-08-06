@@ -6,6 +6,7 @@ import { ChevronLeft, User } from "lucide-react-native";
 import { updateMe } from "../../lib/api";
 import { saveAuth, loadAuth } from "../../lib/auth-store";
 import { colors } from "../../components/ui";
+import { resetStackAndNavigate } from "../../lib/nav";
 
 export default function OnboardingNameScreen() {
   const [name, setName] = useState("");
@@ -30,7 +31,7 @@ export default function OnboardingNameScreen() {
       if (auth.needsRestaurantSelection) {
         router.push("/onboarding/create-restaurant");
       } else {
-        router.replace("/(app)/home");
+        resetStackAndNavigate("/(app)/home");
       }
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to save your name");

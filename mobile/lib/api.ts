@@ -421,6 +421,12 @@ export async function listUsers(token: string) {
   );
 }
 
+export async function listStaffContacts(token: string) {
+  return request<{ id: string; name: string; phone: string; role_label: string; is_connected: boolean }[]>(
+    "/users/staff-contacts", {}, token
+  );
+}
+
 export async function saveRecipes(
   token: string,
   recipes: { dish_name: string; ingredients: { name: string; unit: string; quantity_per_serving: number; category: string }[] }[]
