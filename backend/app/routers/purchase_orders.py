@@ -271,6 +271,11 @@ class PreviewMatchRequest(BaseModel):
     line_items: List[PreviewLineItem]
 
 
+# Semantic matching zone thresholds
+MATCH_THRESHOLD_DIRECT = 0.97  # Zone 1: Direct merge
+MATCH_THRESHOLD_REVIEW = 0.90  # Zone 2: Hold for review (below is Zone 3: new item)
+
+
 async def _best_match_semantic(name: str, existing_items: list) -> tuple[Optional[object], float]:
     name_embedding = await asyncio.to_thread(get_embedding, name)
     best, best_score = None, 0.0
@@ -298,7 +303,7 @@ async def preview_match(body: PreviewMatchRequest, user: dict = Depends(get_curr
     for line in body.line_items:
         line.quantity, line.unit = normalize_to_base(line.quantity, line.unit)
         best_item, score = await _best_match_semantic(line.item_name, existing_items)
-        if score >= 0.95 and best_item:
+        if score >= MATCH_THRESHOLD_DIRECT and best_item:
             _, item_norm_unit = normalize_to_base(0.0, best_item.unit)
             if item_norm_unit.strip().lower() != line.unit.strip().lower():
                 results.append(PreviewMatchResult(
@@ -310,7 +315,7 @@ async def preview_match(body: PreviewMatchRequest, user: dict = Depends(get_curr
                     item_name=line.item_name, quantity=line.quantity, unit=line.unit,
                     match_status="exact", candidate_id=str(best_item.id), candidate_name=best_item.item, score=score
                 ))
-        elif score >= 0.80 and best_item:
+        elif score >= MATCH_THRESHOLD_REVIEW and best_item:
             results.append(PreviewMatchResult(
                 item_name=line.item_name, quantity=line.quantity, unit=line.unit,
                 match_status="needs_review", candidate_id=str(best_item.id), candidate_name=best_item.item, score=score
@@ -416,7 +421,7 @@ async def create_purchase_from_ocr(
                 continue
 
         best_item, score = await _best_match_semantic(line.item_name, existing_items)
-        if score >= 0.95 and best_item:
+        if score >= MATCH_THRESHOLD_DIRECT and best_item:
             _, item_norm_unit = normalize_to_base(0.0, best_item.unit)
             if item_norm_unit.strip().lower() != line.unit.strip().lower():
                 existing_pending = await db.execute(
@@ -447,7 +452,7 @@ async def create_purchase_from_ocr(
                     recorded_by=recorded_by_name, source_reference=source_ref
                 )
                 sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": resolved_unit})
-        elif score >= 0.80 and best_item:
+        elif score >= MATCH_THRESHOLD_REVIEW and best_item:
             existing_pending = await db.execute(
                 select(PendingConfirmation).where(
                     PendingConfirmation.extracted_name == line.item_name,

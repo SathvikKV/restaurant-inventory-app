@@ -16,7 +16,7 @@ from app.services.tenant_registry import get_tenant_models
 from app.services.s3_service import get_s3_presigned_url
 from app.services.transaction_log import log_transaction
 from app.services.units import normalize_to_base, to_display_pair
-from app.routers.purchase_orders import _best_match_semantic
+from app.routers.purchase_orders import _best_match_semantic, MATCH_THRESHOLD_DIRECT, MATCH_THRESHOLD_REVIEW
 
 router = APIRouter()
 
@@ -215,7 +215,7 @@ async def create_issue_from_ocr(
 
         best_item, score = await _best_match_semantic(line.item_name, existing_items)
         _, best_norm_unit = normalize_to_base(0.0, best_item.unit) if best_item else (0.0, "")
-        if score >= 0.95 and best_item and best_norm_unit.strip().lower() == line.unit.strip().lower():
+        if score >= MATCH_THRESHOLD_DIRECT and best_item and best_norm_unit.strip().lower() == line.unit.strip().lower():
             if best_item.current_qty < line.quantity:
                 denied.append({"item": line.item_name, "reason": "Insufficient stock", "available": best_item.current_qty})
                 disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
@@ -247,10 +247,10 @@ async def create_issue_from_ocr(
                     source="app_indent",
                     source_reference=source_ref,
                 ))
-            reason_str = "Needs review" if (best_item and score >= 0.80) else "Item not found"
+            reason_str = "Needs review" if (best_item and score >= MATCH_THRESHOLD_REVIEW) else "Item not found"
             denied.append({"item": line.item_name, "reason": reason_str})
             disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
-            review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": reason_str, "candidate": best_item.item if (best_item and score >= 0.80) else None, "score": float(score) if (best_item and score >= 0.80) else 0.0})
+            review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": reason_str, "candidate": best_item.item if (best_item and score >= MATCH_THRESHOLD_REVIEW) else None, "score": float(score) if (best_item and score >= MATCH_THRESHOLD_REVIEW) else 0.0})
 
     await db.commit()
 
