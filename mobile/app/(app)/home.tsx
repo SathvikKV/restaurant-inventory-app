@@ -319,12 +319,12 @@ export default function HomeScreen() {
           }}>
             <View style={{ gap: 10, flex: 1 }}>
               <Text style={{ fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 2, textTransform: "uppercase" }}>Purchases</Text>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>₹{todaySummary.purchases_total.toLocaleString("en-IN")}</Text>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>₹{(todaySummary.purchases_total / 100).toLocaleString("en-IN")}</Text>
             </View>
             <View style={{ width: 1, height: 40, backgroundColor: colors.border, marginHorizontal: 16 }} />
             <View style={{ gap: 10, flex: 1, alignItems: "flex-end" }}>
               <Text style={{ fontSize: 11, fontWeight: "800", color: colors.textMuted, letterSpacing: 2, textTransform: "uppercase" }}>Consumption</Text>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>₹{todaySummary.consumption_total.toLocaleString("en-IN")}</Text>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>₹{(todaySummary.consumption_total / 100).toLocaleString("en-IN")}</Text>
             </View>
           </View>
         </View>

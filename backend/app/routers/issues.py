@@ -16,7 +16,8 @@ from app.services.tenant_registry import get_tenant_models
 from app.services.s3_service import get_s3_presigned_url
 from app.services.transaction_log import log_transaction
 from app.services.units import normalize_to_base, to_display_pair
-from app.routers.purchase_orders import _best_match_semantic, MATCH_THRESHOLD_DIRECT, MATCH_THRESHOLD_REVIEW
+from app.routers.purchase_orders import PreviewMatchResult
+from app.services.matching import match_pipeline
 
 router = APIRouter()
 
@@ -176,6 +177,8 @@ async def create_issue_from_ocr(
     accepted, denied = [], []
     saved_items, review_items = [], []
     sync_calls = []
+    match_tasks = []
+    lines_to_match = []
 
     for line in body.line_items:
         res = resolutions.get(line.item_name)
@@ -213,44 +216,55 @@ async def create_issue_from_ocr(
                 review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": "Cannot issue uncreated stock"})
             continue
 
-        best_item, score = await _best_match_semantic(line.item_name, existing_items)
-        _, best_norm_unit = normalize_to_base(0.0, best_item.unit) if best_item else (0.0, "")
-        if score >= MATCH_THRESHOLD_DIRECT and best_item and best_norm_unit.strip().lower() == line.unit.strip().lower():
-            if best_item.current_qty < line.quantity:
-                denied.append({"item": line.item_name, "reason": "Insufficient stock", "available": best_item.current_qty})
-                disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
-                review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": "Insufficient stock", "candidate": best_item.item, "score": float(score)})
-                continue
-            best_item.previous_qty = best_item.current_qty
-            best_item.current_qty -= line.quantity
-            best_item.previous_updated = best_item.last_updated
-            best_item.last_updated = datetime.now(timezone.utc)
-            await log_transaction(db, models, item_id=best_item.id, item_name=best_item.item, action="issue",
-                                   quantity_delta=-line.quantity, resulting_qty=best_item.current_qty, unit=best_item.unit,
-                                   recorded_by=recorded_by_name, source_reference=source_ref)
-            accepted.append(line.item_name)
-            sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": best_item.unit})
-        else:
-            existing_pending = await db.execute(
-                select(PendingConfirmation).where(
-                    PendingConfirmation.extracted_name == line.item_name,
-                    PendingConfirmation.status == "pending",
+        match_tasks.append(match_pipeline(line.item_name, line.quantity, line.unit, existing_items))
+        lines_to_match.append(line)
+        
+    if match_tasks:
+        match_results = await asyncio.gather(*match_tasks)
+        for line, m in zip(lines_to_match, match_results):
+            best_item = m["candidate"]
+            score = m["score"]
+            match_status = m["status"]
+            ai_reason = m["reason"]
+            
+            if match_status == "exact" and best_item:
+                if best_item.current_qty < line.quantity:
+                    denied.append({"item": line.item_name, "reason": "Insufficient stock", "available": best_item.current_qty})
+                    disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
+                    review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": "Insufficient stock", "candidate": best_item.item, "score": float(score)})
+                    continue
+                best_item.previous_qty = best_item.current_qty
+                best_item.current_qty -= line.quantity
+                best_item.previous_updated = best_item.last_updated
+                best_item.last_updated = datetime.now(timezone.utc)
+                await log_transaction(db, models, item_id=best_item.id, item_name=best_item.item, action="issue",
+                                       quantity_delta=-line.quantity, resulting_qty=best_item.current_qty, unit=best_item.unit,
+                                       recorded_by=recorded_by_name, source_reference=source_ref)
+                accepted.append(line.item_name)
+                sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": best_item.unit})
+            else:
+                existing_pending = await db.execute(
+                    select(PendingConfirmation).where(
+                        PendingConfirmation.extracted_name == line.item_name,
+                        PendingConfirmation.status == "pending",
+                    )
                 )
-            )
-            if not existing_pending.scalar_one_or_none():
-                db.add(PendingConfirmation(
-                    extracted_name=line.item_name,
-                    candidate_name=best_item.item if best_item else "None",
-                    score=score if best_item else 0.0,
-                    quantity=line.quantity,
-                    unit=line.unit,
-                    source="app_indent",
-                    source_reference=source_ref,
-                ))
-            reason_str = "Needs review" if (best_item and score >= MATCH_THRESHOLD_REVIEW) else "Item not found"
-            denied.append({"item": line.item_name, "reason": reason_str})
-            disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
-            review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": reason_str, "candidate": best_item.item if (best_item and score >= MATCH_THRESHOLD_REVIEW) else None, "score": float(score) if (best_item and score >= MATCH_THRESHOLD_REVIEW) else 0.0})
+                if not existing_pending.scalar_one_or_none():
+                    from app.constants import INDENT_SOURCE
+                    db.add(PendingConfirmation(
+                        extracted_name=line.item_name,
+                        candidate_name=best_item.item if best_item else "None",
+                        score=score if best_item else 0.0,
+                        quantity=line.quantity,
+                        unit=line.unit,
+                        source=INDENT_SOURCE,
+                        source_reference=source_ref,
+                        ai_match_reason=ai_reason,
+                    ))
+                reason_str = ai_reason if match_status == "needs_review" else "Item not found"
+                denied.append({"item": line.item_name, "reason": reason_str})
+                disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
+                review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "reason": reason_str, "candidate": best_item.item if best_item else None, "score": float(score), "flag_reason": ai_reason})
 
     await db.commit()
 

@@ -94,6 +94,7 @@ def make_tenant_models(schema: str) -> dict:
         status: Mapped[str] = mapped_column(String(50), default="pending")
         source: Mapped[str] = mapped_column(String(50), default="whatsapp")
         source_reference: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+        ai_match_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
         created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     class StaffContact(Base):

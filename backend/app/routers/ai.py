@@ -34,15 +34,17 @@ class OCRLineItem(BaseModel):
     item_name: str
     quantity: float
     unit: str
-    unit_price: Optional[float] = None
-    total_price: Optional[float] = None
+    unit_price: Optional[int] = None
+    total_price: Optional[int] = None
+    flagged_for_review: Optional[bool] = False
+    flag_reason: Optional[str] = None
 
 class OCRResult(BaseModel):
     invoice_number: Optional[str] = None
     supplier_name: Optional[str] = None
     invoice_date: Optional[str] = None
     line_items: List[OCRLineItem]
-    total_amount: Optional[float] = None
+    total_amount: Optional[int] = None
     confidence_notes: Optional[str] = None
     s3_key: Optional[str] = None
 
@@ -185,7 +187,7 @@ async def ocr_invoice(
             supplier_name="Demo Supplier",
             invoice_date="2026-07-14",
             line_items=[
-                OCRLineItem(item_name="Sample Item", quantity=10, unit="kg", unit_price=100, total_price=1000),
+                OCRLineItem(item_name="Sample Item", quantity=10, unit="kg", unit_price=10000, total_price=100000),
             ],
             confidence_notes="Gemini not configured — returning demo data.",
         )
@@ -237,12 +239,36 @@ async def ocr_invoice(
                 text = text[4:]
         data = json.loads(text.strip())
 
+        parsed_items = []
+        for item in data.get("line_items", []):
+            up = item.get("unit_price")
+            tp = item.get("total_price")
+            up_paise = int(round(float(up) * 100)) if up is not None else None
+            tp_paise = int(round(float(tp) * 100)) if tp is not None else None
+            
+            li = OCRLineItem(
+                item_name=item.get("item_name"),
+                quantity=float(item.get("quantity") or 0),
+                unit=item.get("unit"),
+                unit_price=up_paise,
+                total_price=tp_paise
+            )
+            if li.quantity and li.unit_price and li.total_price:
+                computed = li.quantity * li.unit_price
+                if abs(computed - li.total_price) > 0.02 * li.total_price:
+                    li.flagged_for_review = True
+                    li.flag_reason = "Price mismatch: quantity × unit price does not match total price"
+            parsed_items.append(li)
+
+        ta = data.get("total_amount")
+        ta_paise = int(round(float(ta) * 100)) if ta is not None else None
+
         return OCRResult(
             invoice_number=data.get("invoice_number"),
             supplier_name=data.get("supplier_name"),
             invoice_date=data.get("invoice_date"),
-            line_items=[OCRLineItem(**item) for item in data.get("line_items", [])],
-            total_amount=data.get("total_amount"),
+            line_items=parsed_items,
+            total_amount=ta_paise,
             s3_key=s3_key,
         )
     except HTTPException:

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, DateTime, Boolean, Text, ForeignKey, Enum as SAEnum
+from sqlalchemy import String, DateTime, Boolean, Text, ForeignKey, Float, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -14,6 +14,14 @@ class TenantType(str, enum.Enum):
 class UserRole(str, enum.Enum):
     owner = "owner"
     manager = "manager"
+
+class UnitOfMeasure(Base):
+    __tablename__ = "units_of_measure"
+    __table_args__ = {"schema": "public"}
+    
+    symbol: Mapped[str] = mapped_column(String(50), primary_key=True)
+    family: Mapped[str] = mapped_column(String(50), nullable=False) # 'weight', 'volume', 'count'
+    factor_to_base: Mapped[float] = mapped_column(Float, nullable=False)
 
 class Tenant(Base):
     __tablename__ = "tenants"

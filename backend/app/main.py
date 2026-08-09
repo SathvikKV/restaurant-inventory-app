@@ -31,6 +31,16 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
 
     if not os.environ.get("SKIP_TENANT_SYNC_BOOT"):
+        # --- Unit cache: must succeed or the app is fundamentally broken. ---
+        # normalize_to_base is called throughout pricing and matching; if the cache
+        # is uninitialized the app will raise RuntimeError on every real request.
+        # Do NOT catch this — let it propagate so a bad deploy fails immediately.
+        async with AsyncSession(engine) as session:
+            from app.services.units import init_unit_cache
+            await init_unit_cache(session)
+
+        # --- Tenant table sync: non-critical self-heal, safe to catch. ---
+        # A failure here does not break the app; existing tenant tables remain intact.
         try:
             async with AsyncSession(engine) as session:
                 result = await session.execute(select(Tenant.schema_name))

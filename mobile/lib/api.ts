@@ -203,7 +203,7 @@ export async function getAIRecommendations(token: string) {
   );
 }
 
-export type LineItem = { item_name: string; quantity: number; unit: string; unit_price?: number; total_price?: number };
+export type LineItem = { item_name: string; quantity: number; unit: string; unit_price?: number; total_price?: number; flagged_for_review?: boolean; flag_reason?: string | null };
 export type OCRResult = { invoice_number?: string; supplier_name?: string; invoice_date?: string; line_items: LineItem[]; total_amount?: number; confidence_notes?: string; s3_key?: string | null };
 
 export async function uploadInvoice(token: string, imageUri: string, mimeType: string): Promise<OCRResult> {
@@ -482,6 +482,7 @@ export type ConfirmationItem = {
   quantity: number;
   unit: string;
   created_at: string;
+  ai_match_reason?: string | null;
 };
 
 export async function listConfirmations(token: string) {

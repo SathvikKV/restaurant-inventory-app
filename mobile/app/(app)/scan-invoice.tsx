@@ -82,10 +82,11 @@ export default function ScanInvoiceScreen() {
         const cleanLineItems = (result.line_items || []).map((i: any) => ({
           ...i,
           quantity: typeof i.quantity === "string" ? parseFloat(i.quantity) || 0 : (i.quantity || 0),
-          unit_price: typeof i.unit_price === "string" ? parseFloat(i.unit_price) || 0 : (i.unit_price || 0),
-          total_price: typeof i.total_price === "string" ? parseFloat(i.total_price) || 0 : (i.total_price || 0),
+          unit_price: typeof i.unit_price === "string" ? Math.round((parseFloat(i.unit_price) || 0) * 100) : Math.round((i.unit_price || 0) * 100),
+          total_price: typeof i.total_price === "string" ? Math.round((parseFloat(i.total_price) || 0) * 100) : Math.round((i.total_price || 0) * 100),
         }));
-        const res = await saveOCRInvoice(auth.token, { ...result, line_items: cleanLineItems, invoice_s3_key: result.s3_key }, resolutions);
+        const totalAmt = result.total_amount ? Math.round(parseFloat(String(result.total_amount)) * 100) : undefined;
+        const res = await saveOCRInvoice(auth.token, { ...result, line_items: cleanLineItems, invoice_s3_key: result.s3_key, total_amount: totalAmt }, resolutions);
         setStage("recorded");
         const msg = res.new_items_created.length > 0
           ? `Invoice recorded. New item(s) added: ${res.new_items_created.join(", ")}`
@@ -144,6 +145,16 @@ export default function ScanInvoiceScreen() {
           }
         } else {
           const ocr = await uploadInvoice(auth.token!, asset.uri, asset.mimeType || "image/jpeg");
+          if (ocr.line_items) {
+            ocr.line_items = ocr.line_items.map((i: any) => ({
+              ...i,
+              unit_price: i.unit_price ? (i.unit_price / 100).toString() : undefined,
+              total_price: i.total_price ? (i.total_price / 100).toString() : undefined,
+            }));
+          }
+          if (ocr.total_amount) {
+            ocr.total_amount = (ocr.total_amount / 100) as any;
+          }
           setResult(ocr);
           try {
             const previews = await previewMatch(auth.token!, ocr.line_items || []);
@@ -375,6 +386,16 @@ export default function ScanInvoiceScreen() {
                     </View>
                   )}
                 </View>
+
+                {/* Price-mismatch warning — must be visible before user confirms */}
+                {docType === "supplier_invoice" && item.flagged_for_review && item.flag_reason && (
+                  <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8, backgroundColor: "#FEF3C7", borderRadius: 10, borderWidth: 1, borderColor: "#FCD34D", paddingHorizontal: 12, paddingVertical: 8 }}>
+                    <Text style={{ fontSize: 14, lineHeight: 18 }}>⚠️</Text>
+                    <Text style={{ flex: 1, fontSize: 12, fontWeight: "700", color: "#92400E", lineHeight: 18 }}>
+                      {item.flag_reason}
+                    </Text>
+                  </View>
+                )}
               </View>
             );
           })}

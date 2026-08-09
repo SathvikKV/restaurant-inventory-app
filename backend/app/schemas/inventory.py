@@ -11,13 +11,13 @@ ItemStatus = Literal["critical", "low", "healthy"]
 
 class SupplierPrice(BaseModel):
     name: str
-    price: float
+    price: int
     best: bool = False
 
 
 class PriceHistoryPoint(BaseModel):
     day: str
-    price: float
+    price: int
 
 
 class InventoryItemResponse(BaseModel):

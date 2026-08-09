@@ -242,6 +242,8 @@ class OCRLineItemIn(BaseModel):
     unit: str
     unit_price: Optional[float] = None
     total_price: Optional[float] = None
+    flagged_for_review: Optional[bool] = False
+    flag_reason: Optional[str] = None
 
 class SaveOCRInvoiceRequest(BaseModel):
     supplier_name: Optional[str] = None
@@ -266,26 +268,12 @@ class PreviewMatchResult(BaseModel):
     candidate_id: Optional[str] = None
     candidate_name: Optional[str] = None
     score: Optional[float] = None
+    flag_reason: Optional[str] = None
 
 class PreviewMatchRequest(BaseModel):
     line_items: List[PreviewLineItem]
 
-
-# Semantic matching zone thresholds
-MATCH_THRESHOLD_DIRECT = 0.97  # Zone 1: Direct merge
-MATCH_THRESHOLD_REVIEW = 0.90  # Zone 2: Hold for review (below is Zone 3: new item)
-
-
-async def _best_match_semantic(name: str, existing_items: list) -> tuple[Optional[object], float]:
-    name_embedding = await asyncio.to_thread(get_embedding, name)
-    best, best_score = None, 0.0
-    for item in existing_items:
-        if not item.embedding:
-            item.embedding = await asyncio.to_thread(get_embedding, item.item)
-        score = cosine_similarity(name_embedding, item.embedding)
-        if score > best_score:
-            best, best_score = item, score
-    return best, best_score
+from app.services.matching import match_pipeline
 
 
 @router.post("/preview-match", response_model=List[PreviewMatchResult], summary="Preview semantic matching for invoice items")
@@ -299,32 +287,23 @@ async def preview_match(body: PreviewMatchRequest, user: dict = Depends(get_curr
     inv_res = await db.execute(select(InventoryItem))
     existing_items = list(inv_res.scalars().all())
 
-    results = []
+    tasks = []
     for line in body.line_items:
         line.quantity, line.unit = normalize_to_base(line.quantity, line.unit)
-        best_item, score = await _best_match_semantic(line.item_name, existing_items)
-        if score >= MATCH_THRESHOLD_DIRECT and best_item:
-            _, item_norm_unit = normalize_to_base(0.0, best_item.unit)
-            if item_norm_unit.strip().lower() != line.unit.strip().lower():
-                results.append(PreviewMatchResult(
-                    item_name=line.item_name, quantity=line.quantity, unit=line.unit,
-                    match_status="needs_review", candidate_id=str(best_item.id), candidate_name=best_item.item, score=score
-                ))
-            else:
-                results.append(PreviewMatchResult(
-                    item_name=line.item_name, quantity=line.quantity, unit=line.unit,
-                    match_status="exact", candidate_id=str(best_item.id), candidate_name=best_item.item, score=score
-                ))
-        elif score >= MATCH_THRESHOLD_REVIEW and best_item:
-            results.append(PreviewMatchResult(
-                item_name=line.item_name, quantity=line.quantity, unit=line.unit,
-                match_status="needs_review", candidate_id=str(best_item.id), candidate_name=best_item.item, score=score
-            ))
-        else:
-            results.append(PreviewMatchResult(
-                item_name=line.item_name, quantity=line.quantity, unit=line.unit,
-                match_status="new"
-            ))
+        tasks.append(match_pipeline(line.item_name, line.quantity, line.unit, existing_items))
+        
+    match_results = await asyncio.gather(*tasks)
+    
+    results = []
+    for line, m in zip(body.line_items, match_results):
+        candidate_id = str(m["candidate"].id) if m["candidate"] else None
+        candidate_name = m["candidate"].item if m["candidate"] else None
+        
+        results.append(PreviewMatchResult(
+            item_name=line.item_name, quantity=line.quantity, unit=line.unit,
+            match_status=m["status"], candidate_id=candidate_id, candidate_name=candidate_name,
+            score=m["score"], flag_reason=m["reason"] if m["status"] == "needs_review" else None
+        ))
     await db.commit()
     return results
 
@@ -367,9 +346,16 @@ async def create_purchase_from_ocr(
     inv_res = await db.execute(select(InventoryItem))
     existing_items = list(inv_res.scalars().all())
 
+    processed_items = []
+    for item in body.line_items:
+        d = item.dict()
+        d["purchase_unit"] = item.unit
+        d["purchase_quantity"] = item.quantity
+        processed_items.append(d)
+
     purchase_record = Purchase(
         supplier=body.supplier_name or "Unknown",
-        items=[item.dict() for item in body.line_items],
+        items=processed_items,
         recorded_by=recorded_by_name,
         s3_key=body.invoice_s3_key,
         status="active",
@@ -382,6 +368,8 @@ async def create_purchase_from_ocr(
     resolutions = body.resolutions or {}
     saved_items = []
     review_items = []
+    match_tasks = []
+    lines_to_match = []
 
     for line in body.line_items:
         line.quantity, line.unit = normalize_to_base(line.quantity, line.unit)
@@ -425,28 +413,28 @@ async def create_purchase_from_ocr(
                 new_items_created.append(line.item_name)
                 sync_calls.append({"item_name": line.item_name, "quantity": line.quantity, "unit": line.unit})
                 continue
+                
+        match_tasks.append(match_pipeline(line.item_name, line.quantity, line.unit, existing_items))
+        lines_to_match.append(line)
+        
+    if match_tasks:
+        match_results = await asyncio.gather(*match_tasks)
+        for line, m in zip(lines_to_match, match_results):
+            force_review = getattr(line, "flagged_for_review", False)
+            flag_reason = getattr(line, "flag_reason", None)
+            
+            best_item = m["candidate"]
+            score = m["score"]
+            match_status = m["status"]
+            ai_reason = m["reason"]
+            
+            if force_review and match_status == "exact":
+                match_status = "needs_review"
+                ai_reason = flag_reason
+            elif force_review and match_status == "needs_review":
+                ai_reason = f"OCR flagged: {flag_reason}. AI note: {ai_reason}"
 
-        best_item, score = await _best_match_semantic(line.item_name, existing_items)
-        if score >= MATCH_THRESHOLD_DIRECT and best_item:
-            _, item_norm_unit = normalize_to_base(0.0, best_item.unit)
-            if item_norm_unit.strip().lower() != line.unit.strip().lower():
-                existing_pending = await db.execute(
-                    select(PendingConfirmation).where(
-                        PendingConfirmation.extracted_name == line.item_name,
-                        PendingConfirmation.candidate_name == best_item.item,
-                        PendingConfirmation.status == "pending",
-                    )
-                )
-                if not existing_pending.scalar_one_or_none():
-                    db.add(PendingConfirmation(
-                        extracted_name=line.item_name, candidate_name=best_item.item,
-                        score=score, quantity=line.quantity, unit=line.unit, source="app",
-                        source_reference=source_ref,
-                    ))
-                resolved_unit = line.unit
-                disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
-                review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "candidate": best_item.item, "score": float(score)})
-            else:
+            if match_status == "exact" and best_item and not force_review:
                 best_item.previous_qty = best_item.current_qty
                 best_item.current_qty += line.quantity
                 best_item.previous_updated = best_item.last_updated
@@ -458,45 +446,40 @@ async def create_purchase_from_ocr(
                     recorded_by=recorded_by_name, source_reference=source_ref
                 )
                 sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": resolved_unit})
-        elif score >= MATCH_THRESHOLD_REVIEW and best_item:
-            existing_pending = await db.execute(
-                select(PendingConfirmation).where(
-                    PendingConfirmation.extracted_name == line.item_name,
-                    PendingConfirmation.candidate_name == best_item.item,
-                    PendingConfirmation.status == "pending",
+            elif match_status == "needs_review" and best_item:
+                existing_pending = await db.execute(
+                    select(PendingConfirmation).where(
+                        PendingConfirmation.extracted_name == line.item_name,
+                        PendingConfirmation.candidate_name == best_item.item,
+                        PendingConfirmation.status == "pending",
+                    )
                 )
-            )
-            if not existing_pending.scalar_one_or_none():
-                db.add(PendingConfirmation(
-                    extracted_name=line.item_name,
-                    candidate_name=best_item.item,
-                    score=score,
-                    quantity=line.quantity,
-                    unit=line.unit,
-                    source="app",
-                    source_reference=source_ref,
-                ))
-            resolved_unit = line.unit
-            disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
-            review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "candidate": best_item.item, "score": float(score)})
-        else:
-            new_inv = InventoryItem(
-                item=line.item_name, unit=line.unit, current_qty=line.quantity,
-                previous_qty=0.0, reorder_threshold=0.0, category="misc",
-                last_updated=datetime.now(timezone.utc),
-                embedding=await asyncio.to_thread(get_embedding, line.item_name),
-            )
-            db.add(new_inv)
-            await db.flush()
-            await log_transaction(
-                db, models, item_id=new_inv.id, item_name=new_inv.item, action="invoice",
-                quantity_delta=line.quantity, resulting_qty=new_inv.current_qty, unit=new_inv.unit,
-                recorded_by=recorded_by_name, source_reference=source_ref
-            )
-            existing_items.append(new_inv)
-            new_items_created.append(line.item_name)
-            resolved_unit = line.unit
-            sync_calls.append({"item_name": line.item_name, "quantity": line.quantity, "unit": resolved_unit})
+                if not existing_pending.scalar_one_or_none():
+                    db.add(PendingConfirmation(
+                        extracted_name=line.item_name, candidate_name=best_item.item,
+                        score=score, quantity=line.quantity, unit=line.unit, source="app",
+                        source_reference=source_ref, ai_match_reason=ai_reason,
+                    ))
+                disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
+                review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "candidate": best_item.item, "score": float(score), "flag_reason": ai_reason})
+            else:
+                new_inv = InventoryItem(
+                    item=line.item_name, unit=line.unit, current_qty=line.quantity,
+                    previous_qty=0.0, reorder_threshold=0.0, category="misc",
+                    last_updated=datetime.now(timezone.utc),
+                    embedding=await asyncio.to_thread(get_embedding, line.item_name),
+                )
+                db.add(new_inv)
+                await db.flush()
+                await log_transaction(
+                    db, models, item_id=new_inv.id, item_name=new_inv.item, action="invoice",
+                    quantity_delta=line.quantity, resulting_qty=new_inv.current_qty, unit=new_inv.unit,
+                    recorded_by=recorded_by_name, source_reference=source_ref
+                )
+                existing_items.append(new_inv)
+                new_items_created.append(line.item_name)
+                resolved_unit = line.unit
+                sync_calls.append({"item_name": line.item_name, "quantity": line.quantity, "unit": resolved_unit})
 
     await db.commit()
 

@@ -27,10 +27,12 @@ async def list_confirmations(user: dict = Depends(get_current_user), db: AsyncSe
     result = await db.execute(select(PendingConfirmation).where(PendingConfirmation.status == "pending").order_by(PendingConfirmation.created_at.desc()))
     rows = result.scalars().all()
     return [{"id": str(r.id), "extracted_name": r.extracted_name, "candidate_name": r.candidate_name,
-             "score": r.score, "quantity": r.quantity, "unit": r.unit, "created_at": r.created_at.isoformat()} for r in rows]
+             "score": r.score, "quantity": r.quantity, "unit": r.unit, "ai_match_reason": r.ai_match_reason, "created_at": r.created_at.isoformat()} for r in rows]
 
 class ResolveConfirmation(BaseModel):
     action: Literal["same", "different"]
+
+# Removed _INDENT_SOURCES, now importing INDENT_SOURCE directly when needed.
 
 @router.post("/{confirmation_id}/resolve")
 async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirmation, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -66,16 +68,45 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
                 recorded_by=recorded_by_name, source_reference=confirmation.source_reference or f"Confirmation #{confirmation.id}"
             )
     else:
-        new_inv = InventoryItem(item=confirmation.extracted_name, unit=norm_unit, current_qty=norm_qty,
-                              previous_qty=0.0, reorder_threshold=0.0, category="misc", last_updated=datetime.now(timezone.utc),
-                              embedding=await asyncio.to_thread(get_embedding, confirmation.extracted_name))
-        db.add(new_inv)
-        await db.flush()
-        await log_transaction(
-            db, models, item_id=new_inv.id, item_name=new_inv.item, action="confirmation_resolved",
-            quantity_delta=norm_qty, resulting_qty=new_inv.current_qty, unit=new_inv.unit,
-            recorded_by=recorded_by_name, source_reference=confirmation.source_reference or f"Confirmation #{confirmation.id}"
-        )
+        from app.constants import INDENT_SOURCE
+        is_indent_source = confirmation.source == INDENT_SOURCE
+        if is_indent_source:
+            # Indent = consumption, not receipt. Create the new item at zero stock so no phantom
+            # inventory is created, then immediately deduct the consumed quantity so the item
+            # lands at -norm_qty. Negative stock here is intentional: it surfaces an honest gap
+            # ("this was consumed before it was ever recorded as received") rather than hiding it.
+            new_inv = InventoryItem(
+                item=confirmation.extracted_name, unit=norm_unit,
+                current_qty=-norm_qty, previous_qty=0.0,
+                reorder_threshold=0.0, category="misc",
+                last_updated=datetime.now(timezone.utc),
+                embedding=await asyncio.to_thread(get_embedding, confirmation.extracted_name)
+            )
+            db.add(new_inv)
+            await db.flush()
+            await log_transaction(
+                db, models, item_id=new_inv.id, item_name=new_inv.item,
+                action="unrecorded_consumption",
+                quantity_delta=-norm_qty, resulting_qty=-norm_qty, unit=norm_unit,
+                recorded_by=recorded_by_name,
+                source_reference=confirmation.source_reference or f"Confirmation #{confirmation.id}"
+            )
+        else:
+            # Purchase/invoice source: quantity is a receipt — seed at the received amount.
+            new_inv = InventoryItem(
+                item=confirmation.extracted_name, unit=norm_unit, current_qty=norm_qty,
+                previous_qty=0.0, reorder_threshold=0.0, category="misc",
+                last_updated=datetime.now(timezone.utc),
+                embedding=await asyncio.to_thread(get_embedding, confirmation.extracted_name)
+            )
+            db.add(new_inv)
+            await db.flush()
+            await log_transaction(
+                db, models, item_id=new_inv.id, item_name=new_inv.item, action="confirmation_resolved",
+                quantity_delta=norm_qty, resulting_qty=new_inv.current_qty, unit=new_inv.unit,
+                recorded_by=recorded_by_name,
+                source_reference=confirmation.source_reference or f"Confirmation #{confirmation.id}"
+            )
 
     confirmation.status = "resolved"
     await db.commit()
@@ -88,7 +119,9 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
             action="receive", item_name=item.item, quantity=disp_qty,
             unit=disp_unit, recorded_by=recorded_by_name, spreadsheet_id=spreadsheet_id
         ))
-    elif body.action == "different":
+    elif body.action == "different" and not is_indent_source:
+        # Only write back to Mise for purchase-sourced new items (genuine receipts).
+        # Indent-sourced shortfalls must not produce a fake receive entry in the spreadsheet.
         asyncio.create_task(push_to_mise(
             action="receive", item_name=confirmation.extracted_name, quantity=disp_qty,
             unit=disp_unit, recorded_by=recorded_by_name, spreadsheet_id=spreadsheet_id

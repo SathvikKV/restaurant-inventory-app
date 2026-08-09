@@ -259,6 +259,9 @@ async def today_summary(user: dict = Depends(get_current_user), db: AsyncSession
     )
 
     # Best-effort consumption value: today's issued quantity × most recent known purchase price per item
+    from app.services.pricing import price_per_base_unit
+    
+    consumption_total = 0.0
     issues = (await db.execute(select(Issue).where(Issue.created_at >= today_start))).scalars().all()
     price_lookup: dict[str, float] = {}
     all_purchases = (await db.execute(select(Purchase).order_by(Purchase.created_at.desc()))).scalars().all()
@@ -267,11 +270,12 @@ async def today_summary(user: dict = Depends(get_current_user), db: AsyncSession
             name = (item.get("item_name") or "").strip().lower()
             if name and name not in price_lookup and item.get("unit_price"):
                 try:
-                    price_lookup[name] = float(item["unit_price"])
+                    raw_price = float(item["unit_price"])
+                    unit = item.get("unit", "")
+                    price_lookup[name] = price_per_base_unit(raw_price, unit)
                 except (ValueError, TypeError):
                     pass
 
-    consumption_total = 0.0
     for issue in issues:
         items_val = issue.items if isinstance(issue.items, (dict, list)) else {}
         if isinstance(items_val, dict):

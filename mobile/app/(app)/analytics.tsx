@@ -135,7 +135,7 @@ export default function AnalyticsScreen() {
           <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textMain, marginBottom: 16, paddingHorizontal: 4, letterSpacing: -0.3 }}>Food Spend (Last 7 Days)</Text>
           <View style={{ backgroundColor: colors.card, borderRadius: 28, borderWidth: 1, borderColor: colors.border, padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.03, shadowRadius: 20, elevation: 2 }}>
             <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Total Purchase Spend</Text>
-            <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5, marginBottom: 20 }}>₹{totalSpend.toLocaleString()}</Text>
+            <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5, marginBottom: 20 }}>₹{(totalSpend / 100).toLocaleString("en-IN")}</Text>
             {loading ? <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 40 }} /> : <SpendTrendChart data={foodCostTrend} />}
           </View>
         </View>

@@ -16,8 +16,8 @@ class PurchaseOrderResponse(BaseModel):
     item_name: str
     quantity: Optional[float] = None
     unit: Optional[str] = None
-    unit_price: Optional[float] = None
-    total_amount: Optional[float] = None
+    unit_price: Optional[int] = None
+    total_amount: Optional[int] = None
     expected_date: Optional[date] = None
     status: POStatus
     notes: Optional[str] = None

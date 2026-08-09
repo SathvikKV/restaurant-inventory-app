@@ -51,9 +51,10 @@ export default function NotificationsScreen() {
 
   const handleTapConfirmation = (item: ConfirmationItem) => {
     const matchPct = Math.round(item.score * 100);
+    const reasonText = item.ai_match_reason ? `\n\nFlag Reason:\n${item.ai_match_reason}` : "";
     Alert.alert(
       "Resolve Item Match",
-      `Extracted: "${item.extracted_name}"\nExisting: "${item.candidate_name}" (${matchPct}% match)\nQuantity: ${formatForDisplay(item.quantity, item.unit)}\n\nIs this the same inventory item?`,
+      `Extracted: "${item.extracted_name}"\nExisting: "${item.candidate_name}" (${matchPct}% match)\nQuantity: ${formatForDisplay(item.quantity, item.unit)}${reasonText}\n\nIs this the same inventory item?`,
       [
         { text: "Same item", onPress: () => performResolve(item.id, "same") },
         { text: "Different item", onPress: () => performResolve(item.id, "different"), style: "destructive" },
@@ -113,6 +114,11 @@ export default function NotificationsScreen() {
                           <Text style={{ fontSize: 13, fontWeight: "700", color: "#A16207" }}>
                             {formatForDisplay(conf.quantity, conf.unit)} • Tap to resolve
                           </Text>
+                          {conf.ai_match_reason && (
+                            <Text style={{ fontSize: 12, color: "#DC2626", marginTop: 4, fontWeight: "600" }}>
+                              {conf.ai_match_reason}
+                            </Text>
+                          )}
                         </View>
                         {isResolving && <ActivityIndicator size="small" color={colors.primary} />}
                       </TouchableOpacity>

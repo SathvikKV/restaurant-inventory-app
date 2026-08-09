@@ -47,7 +47,7 @@ export default function InvoiceHistoryScreen() {
               type: "invoice",
               title: inv.supplier_name || "Unknown Supplier",
               subtitle: inv.item_name ? (inv.quantity != null && inv.unit != null ? `${inv.item_name} (${formatForDisplay(inv.quantity, inv.unit)})` : inv.item_name) : "Invoice Order",
-              amount_or_summary: inv.total_amount ? `₹${inv.total_amount}` : `#${inv.id?.slice(-4)}`,
+              amount_or_summary: inv.total_amount ? `₹${(inv.total_amount / 100).toLocaleString("en-IN")}` : `#${inv.id?.slice(-4)}`,
               status: inv.status || "active",
               date_label: inv.date_label || "Recent",
               created_at: inv.created_at || "",
