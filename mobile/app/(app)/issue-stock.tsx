@@ -27,7 +27,7 @@ export default function IssueStockScreen() {
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace("/(app)/home" as any);
+      router.replace("/(app)/(tabs)/home" as any);
     }
   }
 

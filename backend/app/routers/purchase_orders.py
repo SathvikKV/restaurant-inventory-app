@@ -455,11 +455,22 @@ async def create_purchase_from_ocr(
                     )
                 )
                 if not existing_pending.scalar_one_or_none():
+                    from app.services.push_notifications import send_push_notification
                     db.add(PendingConfirmation(
-                        extracted_name=line.item_name, candidate_name=best_item.item,
-                        score=score, quantity=line.quantity, unit=line.unit, source="app",
-                        source_reference=source_ref, ai_match_reason=ai_reason,
+                        extracted_name=line.item_name,
+                        candidate_name=best_item.item if best_item else "None",
+                        score=score if best_item else 0.0,
+                        quantity=line.quantity,
+                        unit=line.unit,
+                        source="purchase",
+                        source_reference=source_ref,
+                        ai_match_reason=ai_reason,
                     ))
+                    tenant_uuid = None
+                    if 'tenant_record' in locals() and tenant_record:
+                        tenant_uuid = tenant_record.id
+                    if tenant_uuid:
+                        send_push_notification(db, tenant_uuid, "Action Required", f"Pending confirmation for invoice item: {line.item_name}", {"type": "confirmation"})
                 disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
                 review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "candidate": best_item.item, "score": float(score), "flag_reason": ai_reason})
             else:

@@ -18,7 +18,7 @@ export default function SplashScreen() {
           if (!auth.schema || auth.needsRestaurantSelection) {
             router.replace("/onboarding/create-restaurant");
           } else {
-            router.replace("/(app)/home");
+            router.replace("/(app)/(tabs)/home");
           }
           return;
         } catch {

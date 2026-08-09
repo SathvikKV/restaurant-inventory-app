@@ -52,7 +52,7 @@ export default function SuccessScreen() {
         </View>
 
         <TouchableOpacity
-          onPress={() => resetStackAndNavigate("/(app)/home")}
+          onPress={() => resetStackAndNavigate("/(app)/(tabs)/home")}
           activeOpacity={0.85}
           style={{ width: "100%", backgroundColor: colors.primary, borderRadius: 24, paddingVertical: 18, alignItems: "center", shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 4 }}
         >

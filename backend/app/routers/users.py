@@ -25,6 +25,9 @@ class LinkTelegramRequest(BaseModel):
     telegram_id: str
     phone: str
 
+class RegisterPushTokenRequest(BaseModel):
+    expo_push_token: str
+
 router = APIRouter()
 
 def _map_user_response(user: User) -> dict:
@@ -162,6 +165,30 @@ async def deactivate_user(
         await db.commit()
 
     return None
+
+@router.post("/register-push-token", status_code=status.HTTP_200_OK, summary="Register an Expo push token for the current user")
+async def register_push_token_endpoint(
+    body: RegisterPushTokenRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    from app.models.public import PushToken
+    from sqlalchemy.dialects.postgresql import insert
+    
+    user_uuid = uuid.UUID(current_user["sub"])
+    
+    stmt = insert(PushToken).values(
+        user_id=user_uuid,
+        expo_push_token=body.expo_push_token
+    ).on_conflict_do_update(
+        index_elements=['expo_push_token'],
+        set_=dict(updated_at=text("now()"))
+    )
+    
+    await db.execute(stmt)
+    await db.commit()
+    
+    return {"status": "ok"}
 
 @router.post("/staff-contacts", summary="Register a staff contact for future WhatsApp connection")
 async def create_staff_contact(body: StaffContactCreate, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

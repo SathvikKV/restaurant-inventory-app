@@ -415,6 +415,13 @@ export async function createStaffContact(token: string, phone: string, name: str
   return res.json();
 }
 
+export async function registerPushToken(token: string, expoPushToken: string): Promise<void> {
+  await request("/users/register-push-token", {
+    method: "POST",
+    body: JSON.stringify({ expo_push_token: expoPushToken })
+  }, token);
+}
+
 export async function listUsers(token: string) {
   return request<{ id: string; name: string; phone: string; role: string; is_active: boolean }[]>(
     "/users", {}, token

@@ -4,10 +4,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { Bell, Scan, PenLine, ArrowDownToLine, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react-native";
-import { useAuth } from "../../lib/auth-context";
-import { getInventoryHealth, getInventory, getAuditLog, getMe, getTodaySummary } from "../../lib/api";
-import { MiseLogo, colors, Card } from "../../components/ui";
-import { formatForDisplay } from "../../lib/units";
+import { useAuth } from "../../../lib/auth-context";
+import { getInventoryHealth, getInventory, getAuditLog, getMe, getTodaySummary } from "../../../lib/api";
+import { MiseLogo, colors, Card } from "../../../components/ui";
+import { formatForDisplay } from "../../../lib/units";
 
 type HealthData = { score: number; critical: number; low: number; healthy: number; total: number; label?: string };
 type InventoryItem = { id: string; name: string; unit: string; quantity: number; status: string };
@@ -211,7 +211,7 @@ export default function HomeScreen() {
 
         {/* ── Inventory Health ── */}
         <TouchableOpacity
-          onPress={() => router.push("/(app)/inventory")}
+          onPress={() => router.push("/(app)/(tabs)/inventory")}
           activeOpacity={0.95}
           style={{
             backgroundColor: colors.card,

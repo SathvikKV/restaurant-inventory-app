@@ -251,6 +251,7 @@ async def create_issue_from_ocr(
                 )
                 if not existing_pending.scalar_one_or_none():
                     from app.constants import INDENT_SOURCE
+                    from app.services.push_notifications import send_push_notification
                     db.add(PendingConfirmation(
                         extracted_name=line.item_name,
                         candidate_name=best_item.item if best_item else "None",
@@ -261,6 +262,12 @@ async def create_issue_from_ocr(
                         source_reference=source_ref,
                         ai_match_reason=ai_reason,
                     ))
+                    # Check if tenant_id is readily available, if so send push
+                    tenant_uuid = None
+                    if 'tenant_record' in locals() and tenant_record:
+                        tenant_uuid = tenant_record.id
+                    if tenant_uuid:
+                        send_push_notification(db, tenant_uuid, "Action Required", f"Pending confirmation for indent item: {line.item_name}", {"type": "confirmation"})
                 reason_str = ai_reason if match_status == "needs_review" else "Item not found"
                 denied.append({"item": line.item_name, "reason": reason_str})
                 disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)

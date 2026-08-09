@@ -3,11 +3,11 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Ref
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { ChevronDown, ChevronRight, Package } from "lucide-react-native";
-import { useAuth } from "../../lib/auth-context";
-import { getInventory } from "../../lib/api";
-import { MiseLogo, SearchField, colors } from "../../components/ui";
-import { CategoryIcon } from "../../components/CategoryIcon";
-import { toDisplayPair } from "../../lib/units";
+import { useAuth } from "../../../lib/auth-context";
+import { getInventory } from "../../../lib/api";
+import { MiseLogo, SearchField, colors } from "../../../components/ui";
+import { CategoryIcon } from "../../../components/CategoryIcon";
+import { toDisplayPair } from "../../../lib/units";
 
 type APIItem = {
   id: string;

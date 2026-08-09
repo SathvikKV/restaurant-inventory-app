@@ -70,7 +70,7 @@ export default function OtpScreen() {
         if (result.is_new_account) {
           router.push("/onboarding/name");
         } else {
-          resetStackAndNavigate("/(app)/home");
+          resetStackAndNavigate("/(app)/(tabs)/home");
         }
       }
 

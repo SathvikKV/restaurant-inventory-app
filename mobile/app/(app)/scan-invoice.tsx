@@ -71,7 +71,7 @@ export default function ScanInvoiceScreen() {
         const acceptedCount = res.accepted.length;
         const deniedCount = res.denied.length;
         const msg = `${acceptedCount} issued, ${deniedCount} need review${deniedCount > 0 ? ` (${res.denied.map(d => d.item).join(", ")})` : ""}.`;
-        Alert.alert("Indent Processed", msg, [{ text: "OK", onPress: () => router.replace("/(app)/home" as any) }]);
+        Alert.alert("Indent Processed", msg, [{ text: "OK", onPress: () => router.replace("/(app)/(tabs)/home" as any) }]);
       } catch (e: any) {
         Alert.alert("Error", e.message || "Failed to save indent. Please try again.");
         setSaving(false);
@@ -91,7 +91,7 @@ export default function ScanInvoiceScreen() {
         const msg = res.new_items_created.length > 0
           ? `Invoice recorded. New item(s) added: ${res.new_items_created.join(", ")}`
           : "Invoice recorded successfully.";
-        Alert.alert("Done", msg, [{ text: "OK", onPress: () => router.replace("/(app)/home" as any) }]);
+        Alert.alert("Done", msg, [{ text: "OK", onPress: () => router.replace("/(app)/(tabs)/home" as any) }]);
       } catch (e: any) {
         Alert.alert("Error", e.message || "Failed to save invoice. Please try again.");
         setSaving(false);
@@ -186,7 +186,7 @@ export default function ScanInvoiceScreen() {
         <Text style={{ fontSize: 15, color: colors.textMuted, textAlign: "center", fontWeight: "600", marginBottom: 32 }}>
           {docType === "kitchen_indent" ? "Kitchen indent has been processed and inventory deducted successfully." : "Invoice has been saved and inventory updated successfully."}
         </Text>
-        <PrimaryButton label="Back to Home" onPress={() => router.replace("/(app)/home" as any)} />
+        <PrimaryButton label="Back to Home" onPress={() => router.replace("/(app)/(tabs)/home" as any)} />
       </SafeAreaView>
     );
   }
@@ -195,7 +195,7 @@ export default function ScanInvoiceScreen() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F8" }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
-          <TouchableOpacity onPress={() => router.navigate("/(app)/more" as any)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
+          <TouchableOpacity onPress={() => router.navigate("/(app)/(tabs)/more" as any)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
             <X size={22} color={colors.textMain} strokeWidth={2} />
           </TouchableOpacity>
           <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain }}>Scan Document</Text>

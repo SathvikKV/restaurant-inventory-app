@@ -3,9 +3,9 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "rea
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Sparkles, TrendingUp, Info, AlertTriangle, ShieldCheck, PieChart, ShoppingBag, Trash2 } from "lucide-react-native";
-import { useAuth } from "../../lib/auth-context";
-import { getInventoryHealth, getTopItems, getWastageSummary, getFoodCostTrend } from "../../lib/api";
-import { MiseLogo, colors } from "../../components/ui";
+import { useAuth } from "../../../lib/auth-context";
+import { getInventoryHealth, getTopItems, getWastageSummary, getFoodCostTrend } from "../../../lib/api";
+import { MiseLogo, colors } from "../../../components/ui";
 import Svg, { Path, Circle, Line } from "react-native-svg";
 
 function SpendTrendChart({ data }: { data: { day: string; total_spend: number }[] }) {

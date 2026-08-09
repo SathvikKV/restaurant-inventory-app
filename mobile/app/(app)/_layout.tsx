@@ -1,78 +1,22 @@
-import { useEffect } from "react";
-import { Tabs, router } from "expo-router";
-import { View, Text, TouchableOpacity } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useEffect, useRef } from "react";
+import { Stack, router } from "expo-router";
+import { Alert, Platform } from "react-native";
+import * as Device from "expo-device";
+import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../../lib/auth-store";
-import { Home, Package, BarChart2, Menu } from "lucide-react-native";
+import { registerPushToken } from "../../lib/api";
 
-const PRIMARY = "#1B4D36";
-const MUTED = "#687076";
-const BORDER = "#EAECEF";
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
-function TabBar({ state, descriptors, navigation }: any) {
-  const insets = useSafeAreaInsets();
-  const tabs = [
-    { name: "home", label: "Home", Icon: Home },
-    { name: "inventory", label: "Inventory", Icon: Package },
-    { name: "analytics", label: "Insights", Icon: BarChart2 },
-    { name: "more", label: "More", Icon: Menu },
-  ];
-
-  const visibleTabs = state.routes.filter((r: any) => tabs.find(t => t.name === r.name));
-
-  return (
-    <View style={{
-      flexDirection: "row",
-      backgroundColor: "white",
-      borderTopWidth: 1,
-      borderTopColor: BORDER,
-      paddingBottom: insets.bottom || 8,
-      paddingTop: 10,
-      paddingHorizontal: 8,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: -10 },
-      shadowOpacity: 0.04,
-      shadowRadius: 40,
-      elevation: 10,
-    }}>
-      {visibleTabs.map((route: any) => {
-        const tabDef = tabs.find(t => t.name === route.name);
-        if (!tabDef) return null;
-        const isFocused = state.routes[state.index]?.name === route.name;
-        const { Icon: TabIcon, label } = tabDef;
-
-        return (
-          <TouchableOpacity
-            key={route.name}
-            onPress={() => navigation.navigate(route.name)}
-            activeOpacity={0.7}
-            style={{ flex: 1, alignItems: "center", gap: 4 }}
-          >
-            <View style={{
-              width: 48,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: isFocused ? "#E8F0EC" : "transparent",
-              alignItems: "center",
-              justifyContent: "center",
-            }}>
-              <TabIcon size={22} color={isFocused ? PRIMARY : MUTED} strokeWidth={isFocused ? 2.5 : 2} />
-            </View>
-            <Text style={{
-              fontSize: 11,
-              fontWeight: isFocused ? "800" : "600",
-              color: isFocused ? PRIMARY : MUTED,
-              letterSpacing: 0.2,
-            }}>{label}</Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
-
-export default function AppLayout() {
+export default function AppStackLayout() {
   const auth = useAuthStore();
+  const responseListener = useRef<Notifications.EventSubscription>();
 
   useEffect(() => {
     if (!auth.token) {
@@ -80,28 +24,86 @@ export default function AppLayout() {
     }
   }, [auth.token]);
 
+  useEffect(() => {
+    if (!auth.token) return;
+
+    async function registerForPushNotificationsAsync() {
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'default',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#FF231F7C',
+        });
+      }
+
+      if (Device.isDevice) {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        if (existingStatus !== 'granted') {
+          await new Promise<void>((resolve) => {
+            Alert.alert(
+              "Enable Notifications",
+              "We need notifications to alert you about low stock and pending confirmations.",
+              [
+                { text: "Not Now", style: "cancel", onPress: () => resolve() },
+                { 
+                  text: "Enable", 
+                  onPress: async () => {
+                    const { status } = await Notifications.requestPermissionsAsync();
+                    finalStatus = status;
+                    resolve();
+                  } 
+                }
+              ]
+            );
+          });
+        }
+        if (finalStatus !== 'granted') return;
+
+        try {
+          const pushTokenString = (await Notifications.getExpoPushTokenAsync({
+            projectId: "03676612-e881-4ed6-944e-d2d34ce2cb76"
+          })).data;
+          await registerPushToken(auth.token!, pushTokenString);
+        } catch (e) {
+          console.error("Push token error", e);
+        }
+      }
+    }
+
+    registerForPushNotificationsAsync();
+
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      if (data.type === 'confirmation') {
+        router.push("/(app)/notifications");
+      } else if (data.type === 'low_stock' && data.itemJson) {
+        router.push({ pathname: "/(app)/item-detail", params: { itemJson: data.itemJson } });
+      }
+    });
+
+    return () => {
+      if (responseListener.current) Notifications.removeNotificationSubscription(responseListener.current);
+    };
+  }, [auth.token]);
+
   if (!auth.token) return null;
 
   return (
-    <Tabs
-      tabBar={(props) => <TabBar {...props} />}
-      screenOptions={{ headerShown: false }}
-    >
-      <Tabs.Screen name="home" />
-      <Tabs.Screen name="inventory" />
-      <Tabs.Screen name="analytics" />
-      <Tabs.Screen name="more" />
-      <Tabs.Screen name="item-detail" options={{ href: null }} />
-      <Tabs.Screen name="adjust-stock" options={{ href: null }} />
-      <Tabs.Screen name="issue-stock" options={{ href: null }} />
-      <Tabs.Screen name="receive-stock" options={{ href: null }} />
-      <Tabs.Screen name="log-wastage" options={{ href: null }} />
-      <Tabs.Screen name="invoice-history" options={{ href: null }} />
-      <Tabs.Screen name="activity-history" options={{ href: null }} />
-      <Tabs.Screen name="notifications" options={{ href: null }} />
-      <Tabs.Screen name="scan-invoice" options={{ href: null }} />
-      <Tabs.Screen name="recipes" options={{ href: null }} />
-      <Tabs.Screen name="recipe-detail" options={{ href: null }} />
-    </Tabs>
+    <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="item-detail" />
+      <Stack.Screen name="adjust-stock" />
+      <Stack.Screen name="issue-stock" />
+      <Stack.Screen name="receive-stock" />
+      <Stack.Screen name="log-wastage" />
+      <Stack.Screen name="invoice-history" />
+      <Stack.Screen name="activity-history" />
+      <Stack.Screen name="notifications" />
+      <Stack.Screen name="scan-invoice" />
+      <Stack.Screen name="recipes" />
+      <Stack.Screen name="recipe-detail" />
+    </Stack>
   );
 }

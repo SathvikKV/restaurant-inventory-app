@@ -3,11 +3,11 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "rea
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { ChefHat, Users, FileText, Receipt, Store, ChevronRight, LogOut, User } from "lucide-react-native";
-import { useAuth } from "../../lib/auth-context";
-import { clearAuth, saveAuth } from "../../lib/auth-store";
-import { getMe } from "../../lib/api";
-import { MiseLogo, colors } from "../../components/ui";
-import { resetStackAndNavigate } from "../../lib/nav";
+import { useAuth } from "../../../lib/auth-context";
+import { clearAuth, saveAuth } from "../../../lib/auth-store";
+import { getMe } from "../../../lib/api";
+import { MiseLogo, colors } from "../../../components/ui";
+import { resetStackAndNavigate } from "../../../lib/nav";
 
 const MENU_ITEMS: { icon: any; label: string; bg: string; color: string; badge?: string | null; route?: string }[] = [
   { icon: User, label: "Account & Profile", bg: "#EEF2FF", color: "#4F46E5", route: "/(app)/profile" },

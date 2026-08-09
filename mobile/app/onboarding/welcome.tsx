@@ -78,7 +78,7 @@ export default function WelcomeScreen() {
           <TouchableOpacity
             onPress={async () => {
               const auth = await hydrateAuth();
-              if (auth.token) resetStackAndNavigate("/(app)/home");
+              if (auth.token) resetStackAndNavigate("/(app)/(tabs)/home");
               else router.push("/onboarding/phone");
             }}
             activeOpacity={0.7}

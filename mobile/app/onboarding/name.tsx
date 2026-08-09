@@ -31,7 +31,7 @@ export default function OnboardingNameScreen() {
       if (auth.needsRestaurantSelection) {
         router.push("/onboarding/create-restaurant");
       } else {
-        resetStackAndNavigate("/(app)/home");
+        resetStackAndNavigate("/(app)/(tabs)/home");
       }
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to save your name");
