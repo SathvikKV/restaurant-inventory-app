@@ -51,7 +51,7 @@ async def create_restaurant(
     Creates a new tenant (restaurant), assigns the current user as owner,
     and returns a new JWT with the restaurant context embedded.
     """
-    tenant = await create_tenant(db, body.name, body.tenant_type)
+    tenant = await create_tenant(db, body.name, uuid.UUID(user["user_id"]), body.tenant_type)
     await assign_user_to_tenant(db, uuid.UUID(user["user_id"]), tenant.id, role="owner")
 
     return RestaurantResponse(

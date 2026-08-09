@@ -175,7 +175,7 @@ async def register_push_token_endpoint(
     from app.models.public import PushToken
     from sqlalchemy.dialects.postgresql import insert
     
-    user_uuid = uuid.UUID(current_user["sub"])
+    user_uuid = uuid.UUID(current_user["user_id"])
     
     stmt = insert(PushToken).values(
         user_id=user_uuid,

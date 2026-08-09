@@ -33,6 +33,7 @@ def make_unique_schema_name(base: str, existing: list[str]) -> str:
 async def create_tenant(
     db: AsyncSession,
     name: str,
+    user_id: uuid.UUID,
     tenant_type: str = "restaurant",
 ) -> Tenant:
     """
@@ -42,12 +43,21 @@ async def create_tenant(
     3. Creates Postgres schema
     4. Creates tables in the new schema
     """
-    # Get existing schema names to avoid collisions
-    result = await db.execute(select(Tenant.schema_name))
-    existing = [row[0] for row in result.fetchall()]
-
+    from fastapi import HTTPException
+    
+    # 1. Check if this user already has a restaurant with this exact name
+    user_tenants = await get_tenants_for_user(db, user_id)
+    for t in user_tenants:
+        if t.name.strip().lower() == name.strip().lower():
+            raise HTTPException(status_code=400, detail="You already have a restaurant registered with this name. Did you mean to select it instead of creating a new one?")
+            
+    # 2. Check if the schema name (slug) already exists globally
     base_slug = slugify(name)
-    schema_name = make_unique_schema_name(base_slug, existing)
+    result = await db.execute(select(Tenant.schema_name).where(Tenant.schema_name == base_slug))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail=f"This restaurant name is already registered. Please add a branch or location name (e.g., '{name} — Jubilee Hills') to distinguish it.")
+
+    schema_name = base_slug
 
     tenant = Tenant(
         name=name,
