@@ -9,10 +9,22 @@ from app.services.embeddings import get_embedding, cosine_similarity
 
 logger = logging.getLogger(__name__)
 
-gemini_api_key = os.getenv("GEMINI_API_KEY")
-if gemini_api_key:
-    genai.configure(api_key=gemini_api_key)
-model = genai.GenerativeModel("gemini-1.5-flash")
+# Use settings.gemini_api_key to ensure this works in production (EB env var)
+# rather than falling back to os.getenv which is not set locally.
+def _get_model():
+    try:
+        from app.config import get_settings
+        api_key = get_settings().gemini_api_key or os.getenv("GEMINI_API_KEY")
+    except Exception:
+        api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        genai.configure(api_key=api_key)
+    # gemini-1.5-flash was deprecated (404). gemini-2.0-flash confirmed available
+    # on this API key via GET /v1beta/models on 2026-08-10.
+    return genai.GenerativeModel("gemini-2.0-flash")
+
+model = _get_model()
+
 
 async def get_top_candidates(name: str, existing_items: list, top_k: int = 5, threshold: float = 0.75) -> List[Tuple[Any, float]]:
     name_embedding = await asyncio.to_thread(get_embedding, name)
