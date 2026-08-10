@@ -240,6 +240,8 @@ class OCRLineItemIn(BaseModel):
     item_name: str
     quantity: float
     unit: str
+    pack_size: Optional[float] = None
+    pack_unit: Optional[str] = None
     unit_price: Optional[float] = None
     total_price: Optional[float] = None
     flagged_for_review: Optional[bool] = False
@@ -372,7 +374,49 @@ async def create_purchase_from_ocr(
     lines_to_match = []
 
     for line in body.line_items:
-        line.quantity, line.unit = normalize_to_base(line.quantity, line.unit)
+        from app.services.units import normalize_to_base, UnitConversionError
+        original_unit = line.unit
+        
+        # If OCR extracted a pack size, pre-calculate the total base quantity and use the pack unit
+        if line.pack_size is not None and line.pack_unit is not None:
+            line.quantity = line.quantity * line.pack_size
+            line.unit = line.pack_unit
+            
+        try:
+            line.quantity, line.unit = normalize_to_base(line.quantity, line.unit)
+        except UnitConversionError as e:
+            # It's a known packaging unit without a pack size. Route to a distinct PendingConfirmation.
+            # Do NOT fail the entire invoice.
+            # We use source="purchase_pack_size" to signal the frontend to show the number-input UI.
+            from app.services.push_notifications import send_push_notification
+            db.add(PendingConfirmation(
+                extracted_name=line.item_name,
+                candidate_name="None",
+                score=0.0,
+                quantity=line.quantity,
+                unit=line.unit,
+                unit_price=line.unit_price,
+                purchase_unit=original_unit,
+                source="purchase_pack_size",
+                source_reference=source_ref,
+                ai_match_reason=f"How much is in one {line.unit} of {line.item_name}?",
+            ))
+            tenant_uuid = None
+            if 'tenant_record' in locals() and tenant_record:
+                tenant_uuid = tenant_record.id
+            if tenant_uuid:
+                send_push_notification(db, tenant_uuid, "Action Required", f"Pending confirmation for invoice item: {line.item_name}", {"type": "confirmation"})
+            
+            review_items.append({
+                "item_name": line.item_name, 
+                "quantity": line.quantity, 
+                "unit": line.unit, 
+                "candidate": "None", 
+                "score": 0.0, 
+                "flag_reason": str(e)
+            })
+            continue # Skip matching for this line item entirely
+            
         res = resolutions.get(line.item_name)
         if res is not None:
             if res.get("same") is True:
@@ -384,10 +428,28 @@ async def create_purchase_from_ocr(
                             target_item = item
                             break
                 if target_item:
+                    from app.services.units import normalize_to_base
+                    _, target_base_unit = normalize_to_base(0.0, target_item.unit)
+                    
+                    old_qty = target_item.current_qty
                     target_item.previous_qty = target_item.current_qty
                     target_item.current_qty += line.quantity
                     target_item.previous_updated = target_item.last_updated
                     target_item.last_updated = datetime.now(timezone.utc)
+                    
+                    if line.unit_price is not None:
+                        from app.services.pricing import update_moving_average_price
+                        target_item.avg_price_per_base_unit = update_moving_average_price(
+                            old_avg_price=target_item.avg_price_per_base_unit,
+                            old_qty=old_qty,
+                            incoming_unit_price=line.unit_price,
+                            incoming_purchase_unit=original_unit,
+                            incoming_qty=line.quantity
+                        )
+                    
+                    # Update unit if incoming unit is a more specific base unit, or if the user explicitly resolved it
+                    target_item.unit = line.unit
+                    
                     await log_transaction(
                         db, models, item_id=target_item.id, item_name=target_item.item, action="invoice",
                         quantity_delta=line.quantity, resulting_qty=target_item.current_qty, unit=target_item.unit,
@@ -396,9 +458,20 @@ async def create_purchase_from_ocr(
                     sync_calls.append({"item_name": target_item.item, "quantity": line.quantity, "unit": target_item.unit})
                 continue
             elif res.get("same") is False:
+                avg_price = None
+                if line.unit_price is not None:
+                    from app.services.pricing import update_moving_average_price
+                    avg_price = update_moving_average_price(
+                        old_avg_price=None,
+                        old_qty=0.0,
+                        incoming_unit_price=line.unit_price,
+                        incoming_purchase_unit=original_unit,
+                        incoming_qty=line.quantity
+                    )
                 new_inv = InventoryItem(
                     item=line.item_name, unit=line.unit, current_qty=line.quantity,
                     previous_qty=0.0, reorder_threshold=0.0, category="misc",
+                    avg_price_per_base_unit=avg_price,
                     last_updated=datetime.now(timezone.utc),
                     embedding=await asyncio.to_thread(get_embedding, line.item_name),
                 )
@@ -435,18 +508,39 @@ async def create_purchase_from_ocr(
                 ai_reason = f"OCR flagged: {flag_reason}. AI note: {ai_reason}"
 
             if match_status == "exact" and best_item and not force_review:
-                best_item.previous_qty = best_item.current_qty
-                best_item.current_qty += line.quantity
-                best_item.previous_updated = best_item.last_updated
-                best_item.last_updated = datetime.now(timezone.utc)
-                resolved_unit = best_item.unit
-                await log_transaction(
-                    db, models, item_id=best_item.id, item_name=best_item.item, action="invoice",
-                    quantity_delta=line.quantity, resulting_qty=best_item.current_qty, unit=resolved_unit,
-                    recorded_by=recorded_by_name, source_reference=source_ref
-                )
-                sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": resolved_unit})
-            elif match_status == "needs_review" and best_item:
+                from app.services.units import normalize_to_base
+                _, target_base_unit = normalize_to_base(0.0, best_item.unit)
+                
+                if target_base_unit != line.unit:
+                    match_status = "needs_review"
+                    ai_reason = f"Unit family mismatch: Cannot silently merge incoming '{line.unit}' into existing '{best_item.unit}'."
+                else:
+                    old_qty = best_item.current_qty
+                    best_item.previous_qty = best_item.current_qty
+                    best_item.current_qty += line.quantity
+                    best_item.previous_updated = best_item.last_updated
+                    best_item.last_updated = datetime.now(timezone.utc)
+                    best_item.unit = line.unit # Update to the incoming normalized unit
+                    
+                    if line.unit_price is not None:
+                        from app.services.pricing import update_moving_average_price
+                        best_item.avg_price_per_base_unit = update_moving_average_price(
+                            old_avg_price=best_item.avg_price_per_base_unit,
+                            old_qty=old_qty,
+                            incoming_unit_price=line.unit_price,
+                            incoming_purchase_unit=original_unit,
+                            incoming_qty=line.quantity
+                        )
+                        
+                    resolved_unit = best_item.unit
+                    await log_transaction(
+                        db, models, item_id=best_item.id, item_name=best_item.item, action="invoice",
+                        quantity_delta=line.quantity, resulting_qty=best_item.current_qty, unit=resolved_unit,
+                        recorded_by=recorded_by_name, source_reference=source_ref
+                    )
+                    sync_calls.append({"item_name": best_item.item, "quantity": line.quantity, "unit": resolved_unit})
+            
+            if match_status == "needs_review" and best_item:
                 existing_pending = await db.execute(
                     select(PendingConfirmation).where(
                         PendingConfirmation.extracted_name == line.item_name,
@@ -462,6 +556,8 @@ async def create_purchase_from_ocr(
                         score=score if best_item else 0.0,
                         quantity=line.quantity,
                         unit=line.unit,
+                        unit_price=line.unit_price,
+                        purchase_unit=original_unit,
                         source="purchase",
                         source_reference=source_ref,
                         ai_match_reason=ai_reason,
@@ -474,9 +570,20 @@ async def create_purchase_from_ocr(
                 disp_qty, disp_unit = to_display_pair(line.quantity, line.unit)
                 review_items.append({"item_name": line.item_name, "quantity": disp_qty, "unit": disp_unit, "candidate": best_item.item, "score": float(score), "flag_reason": ai_reason})
             else:
+                avg_price = None
+                if line.unit_price is not None:
+                    from app.services.pricing import update_moving_average_price
+                    avg_price = update_moving_average_price(
+                        old_avg_price=None,
+                        old_qty=0.0,
+                        incoming_unit_price=line.unit_price,
+                        incoming_purchase_unit=original_unit,
+                        incoming_qty=line.quantity
+                    )
                 new_inv = InventoryItem(
                     item=line.item_name, unit=line.unit, current_qty=line.quantity,
                     previous_qty=0.0, reorder_threshold=0.0, category="misc",
+                    avg_price_per_base_unit=avg_price,
                     last_updated=datetime.now(timezone.utc),
                     embedding=await asyncio.to_thread(get_embedding, line.item_name),
                 )

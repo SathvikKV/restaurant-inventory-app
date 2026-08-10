@@ -34,7 +34,8 @@ class BulkIngredientCreate(BaseModel):
 
 router = APIRouter()
 
-def _map_item_response(db_item) -> dict:
+def _map_item_response(db_item, avg_daily_usage: Optional[float] = None, runway: Optional[float] = None,
+                       avg_price_per_unit: Optional[float] = None, stock_value: Optional[float] = None) -> dict:
     qty = float(db_item.current_qty)
     threshold = float(db_item.reorder_threshold)
     status_val = "healthy"
@@ -49,11 +50,13 @@ def _map_item_response(db_item) -> dict:
         "category": db_item.category or "misc",
         "quantity": qty,
         "unit": db_item.unit,
-        "days_remaining": 0.0, # Computed fields omitted for MVP
+        "days_remaining": runway,
         "status": status_val,
-        "avg_daily_usage": 0.0,
-        "week_usage": 0.0,
+        "avg_daily_usage": avg_daily_usage,
+        "week_usage": None,
         "suggested_purchase": max(0.0, threshold - qty),
+        "avg_price_per_unit": avg_price_per_unit,
+        "stock_value": stock_value,
         "suppliers": [],
         "price_history": []
     }
@@ -164,7 +167,77 @@ async def get_inventory_item(
     item = await db.get(InventoryItem, uuid.UUID(item_id))
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+        
+    InventoryTransaction = models["inventory_transactions"]
+    from datetime import timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=14)
+    from sqlalchemy import func
     
+    result = await db.execute(
+        select(func.sum(InventoryTransaction.quantity_delta))
+        .where(
+            InventoryTransaction.item_id == item.id,
+            InventoryTransaction.action.in_(['issue', 'waste']),
+            InventoryTransaction.created_at >= cutoff
+        )
+    )
+    total_consumed = result.scalar()
+    
+    avg_daily_usage = None
+    runway = None
+    if total_consumed is not None and total_consumed < 0:
+        avg_daily_usage = abs(total_consumed) / 14.0
+        if avg_daily_usage > 0:
+            runway = max(0.0, item.current_qty) / avg_daily_usage
+            
+    avg_price_per_unit = None
+    stock_value = None
+    if getattr(item, 'avg_price_per_base_unit', None) is not None:
+        from app.services.units import to_display_pair
+        disp_qty, _ = to_display_pair(1.0, item.unit)
+        if disp_qty > 0:
+            avg_price_per_unit = (item.avg_price_per_base_unit / disp_qty) / 100.0
+            
+        stock_value = (item.current_qty * item.avg_price_per_base_unit) / 100.0
+
+    return _map_item_response(
+        item,
+        avg_daily_usage=avg_daily_usage,
+        runway=runway,
+        avg_price_per_unit=avg_price_per_unit,
+        stock_value=stock_value
+    )
+
+
+@router.patch("/{item_id}", response_model=InventoryItemResponse, summary="Update an inventory item")
+async def update_inventory_item(
+    item_id: str,
+    update_data: InventoryItemUpdate,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    schema = user.get("schema")
+    if not schema:
+        raise HTTPException(status_code=400, detail="User has no assigned restaurant")
+    models = get_tenant_models(schema)
+    InventoryItem = models["inventory"]
+
+    item = await db.get(InventoryItem, uuid.UUID(item_id))
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+        
+    if update_data.item is not None:
+        item.item = update_data.item
+    if update_data.unit is not None:
+        item.unit = update_data.unit
+    if update_data.reorder_threshold is not None:
+        item.reorder_threshold = update_data.reorder_threshold
+    if update_data.category is not None:
+        item.category = update_data.category
+
+    item.last_updated = datetime.now(timezone.utc)
+    
+    await db.commit()
     return _map_item_response(item)
 
 

@@ -34,6 +34,8 @@ class OCRLineItem(BaseModel):
     item_name: str
     quantity: float
     unit: str
+    pack_size: Optional[float] = None
+    pack_unit: Optional[str] = None
     unit_price: Optional[int] = None
     total_price: Optional[int] = None
     flagged_for_review: Optional[bool] = False
@@ -213,9 +215,13 @@ async def ocr_invoice(
   "invoice_number": "string or null",
   "supplier_name": "string or null",
   "invoice_date": "YYYY-MM-DD or null",
-  "line_items": [{"item_name": "string", "quantity": number, "unit": "string", "unit_price": number or null, "total_price": number or null}],
+  "line_items": [{"item_name": "string", "quantity": number, "unit": "string", "pack_size": number or null, "pack_unit": "string or null", "unit_price": number or null, "total_price": number or null}],
   "total_amount": number or null
-}"""
+}
+
+Instructions for line_items:
+- `quantity` and `unit`: Extract the primary quantity and unit (e.g., for "3 bags", quantity=3, unit="bags").
+- `pack_size` and `pack_unit`: If the invoice specifies how much is in EACH pack/unit (e.g., "3 bags (25kg each)"), extract the size per pack (pack_size=25) and its unit (pack_unit="kg"). If no pack size is specified, set both to null."""
 
         try:
             response = await asyncio.wait_for(
@@ -248,8 +254,10 @@ async def ocr_invoice(
             
             li = OCRLineItem(
                 item_name=item.get("item_name"),
-                quantity=float(item.get("quantity") or 0),
-                unit=item.get("unit"),
+                quantity=float(item.get("quantity", 0)),
+                unit=item.get("unit", "pcs"),
+                pack_size=item.get("pack_size"),
+                pack_unit=item.get("pack_unit"),
                 unit_price=up_paise,
                 total_price=tp_paise
             )

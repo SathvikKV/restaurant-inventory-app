@@ -26,11 +26,13 @@ class InventoryItemResponse(BaseModel):
     category: Category
     quantity: float
     unit: str
-    days_remaining: float
+    days_remaining: float | None = None
     status: ItemStatus
-    avg_daily_usage: float
-    week_usage: float
+    avg_daily_usage: float | None = None
+    week_usage: float | None = None
     suggested_purchase: float
+    avg_price_per_unit: float | None = None
+    stock_value: float | None = None
     suppliers: List[SupplierPrice] = []
     price_history: List[PriceHistoryPoint] = []
 

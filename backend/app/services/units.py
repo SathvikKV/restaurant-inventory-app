@@ -11,6 +11,15 @@ logger = logging.getLogger(__name__)
 _UNIT_CACHE: Dict[str, Tuple[str, float]] = {}
 _CACHE_INITIALIZED = False
 
+class UnitConversionError(Exception):
+    pass
+
+PACKAGING_UNITS = {
+    "bag", "bags", "sack", "sacks", "box", "boxes", "case", "cases", 
+    "crate", "crates", "tin", "tins", "carton", "cartons", "drum", "drums",
+    "pkt", "pkts", "packet", "packets"
+}
+
 async def init_unit_cache(session):
     from sqlalchemy import text
     global _UNIT_CACHE, _CACHE_INITIALIZED
@@ -36,6 +45,9 @@ def normalize_to_base(quantity: float, unit: str) -> tuple[float, str]:
             return quantity * factor, "ml"
         else:
             return quantity, unit # count pass through unchanged
+            
+    if u in PACKAGING_UNITS:
+        raise UnitConversionError(f"Packaging unit '{unit}' requires a known pack size")
     
     logger.warning(f"Unknown unit '{unit}' hit identity fallback in normalize_to_base")
     return quantity, unit
