@@ -19,9 +19,10 @@ def _get_model():
         api_key = os.getenv("GEMINI_API_KEY")
     if api_key:
         genai.configure(api_key=api_key)
-    # gemini-1.5-flash was deprecated (404). gemini-2.0-flash confirmed available
-    # on this API key via GET /v1beta/models on 2026-08-10.
-    return genai.GenerativeModel("gemini-2.0-flash")
+    # gemini-1.5-flash was deprecated (404). gemini-2.0-flash also 404s on this
+    # API key despite appearing in list_models(). gemini-2.5-flash confirmed
+    # working on this key via direct SDK call on 2026-08-10. Matches ai.py.
+    return genai.GenerativeModel("gemini-2.5-flash")
 
 model = _get_model()
 
