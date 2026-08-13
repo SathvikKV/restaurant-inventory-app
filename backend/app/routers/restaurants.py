@@ -24,6 +24,7 @@ class RestaurantCreate(BaseModel):
     area: Optional[str] = None
     city: Optional[str] = None
     tenant_type: str = "restaurant"
+    parent_tenant_id: Optional[str] = None
 
 
 class RestaurantResponse(BaseModel):
@@ -49,9 +50,22 @@ async def create_restaurant(
 ):
     """
     Creates a new tenant (restaurant), assigns the current user as owner,
-    and returns a new JWT with the restaurant context embedded.
+    and returns the created restaurant details.
     """
-    tenant = await create_tenant(db, body.name, uuid.UUID(user["user_id"]), body.tenant_type)
+    parent_uuid = None
+    if body.parent_tenant_id:
+        try:
+            parent_uuid = uuid.UUID(body.parent_tenant_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid parent_tenant_id format")
+
+    tenant = await create_tenant(
+        db, 
+        body.name, 
+        uuid.UUID(user["user_id"]), 
+        body.tenant_type,
+        parent_tenant_id=parent_uuid
+    )
     await assign_user_to_tenant(db, uuid.UUID(user["user_id"]), tenant.id, role="owner")
 
     return RestaurantResponse(
@@ -121,19 +135,20 @@ async def select_restaurant(
         raise HTTPException(status_code=404, detail="Restaurant not found")
 
     # Verify user belongs to this tenant
+    from app.models.public import UserTenantMembership
     result = await db.execute(
-        select(User).where(
-            User.id == uuid.UUID(user["user_id"]),
-            User.tenant_id == tenant.id,
+        select(UserTenantMembership).where(
+            UserTenantMembership.user_id == uuid.UUID(user["user_id"]),
+            UserTenantMembership.tenant_id == tenant.id,
         )
     )
-    db_user = result.scalar_one_or_none()
-    if not db_user:
+    membership = result.scalar_one_or_none()
+    if not membership:
         raise HTTPException(status_code=403, detail="You do not have access to this restaurant")
 
-    user_role = db_user.role.value if hasattr(db_user.role, 'value') else db_user.role
+    user_role = membership.role.value if hasattr(membership.role, 'value') else membership.role
     access_token = create_access_token(
-        user_id=str(db_user.id),
+        user_id=str(user["user_id"]),
         role=user_role,
         tenant_id=str(tenant.id),
         schema_name=tenant.schema_name,

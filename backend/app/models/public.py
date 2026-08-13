@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String, DateTime, Boolean, Text, ForeignKey, Float, Enum as SAEnum
+from sqlalchemy import String, DateTime, Boolean, Text, ForeignKey, Float, Enum as SAEnum, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -53,7 +53,10 @@ class User(Base):
 
 class UserTenantMembership(Base):
     __tablename__ = "user_tenant_memberships"
-    __table_args__ = {"schema": "public"}
+    __table_args__ = (
+        UniqueConstraint("user_id", "tenant_id", name="uq_membership_user_tenant"),
+        {"schema": "public"},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)

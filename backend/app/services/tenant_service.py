@@ -35,32 +35,56 @@ async def create_tenant(
     name: str,
     user_id: uuid.UUID,
     tenant_type: str = "restaurant",
+    parent_tenant_id: Optional[uuid.UUID] = None,
 ) -> Tenant:
     """
     Creates a new tenant:
-    1. Generates unique schema name from restaurant name
+    1. Generates unique schema name from restaurant name (or parent slug + branch slug)
     2. Creates Tenant record in public.tenants
     3. Creates Postgres schema
     4. Creates tables in the new schema
     """
     from fastapi import HTTPException
     
+    if parent_tenant_id:
+        parent_result = await db.execute(select(Tenant).where(Tenant.id == parent_tenant_id))
+        parent_tenant = parent_result.scalar_one_or_none()
+        if not parent_tenant:
+            raise HTTPException(status_code=404, detail="Parent restaurant not found")
+            
+        parent_mem = await db.execute(
+            select(UserTenantMembership).where(
+                UserTenantMembership.user_id == user_id,
+                UserTenantMembership.tenant_id == parent_tenant_id
+            )
+        )
+        if not parent_mem.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="You do not have access to the parent restaurant")
+            
+        base_slug = f"{parent_tenant.schema_name}_{slugify(name)}"
+        display_name = f"{parent_tenant.name} — {name}"
+    else:
+        base_slug = slugify(name)
+        display_name = name
+
     # 1. Check if this user already has a restaurant with this exact name
     user_tenants = await get_tenants_for_user(db, user_id)
     for t in user_tenants:
-        if t.name.strip().lower() == name.strip().lower():
+        if t.name.strip().lower() == display_name.strip().lower():
             raise HTTPException(status_code=400, detail="You already have a restaurant registered with this name. Did you mean to select it instead of creating a new one?")
             
     # 2. Check if the schema name (slug) already exists globally
-    base_slug = slugify(name)
     result = await db.execute(select(Tenant.schema_name).where(Tenant.schema_name == base_slug))
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail=f"This restaurant name is already registered. Please add a branch or location name (e.g., '{name} — Jubilee Hills') to distinguish it.")
+        if parent_tenant_id:
+            raise HTTPException(status_code=400, detail=f"This branch location name is already registered for this restaurant.")
+        else:
+            raise HTTPException(status_code=400, detail=f"This restaurant name is already registered. Please add a branch or location name (e.g., '{name} — Jubilee Hills') to distinguish it.")
 
     schema_name = base_slug
 
     tenant = Tenant(
-        name=name,
+        name=display_name,
         schema_name=schema_name,
         tenant_type=tenant_type,
         is_active=True,
@@ -98,7 +122,7 @@ async def create_tenant(
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.post(
                     provision_url,
-                    json={"restaurant_name": name},
+                    json={"restaurant_name": display_name},
                     headers={"X-Sync-Token": settings.mise_inbound_secret},
                 )
                 resp.raise_for_status()
