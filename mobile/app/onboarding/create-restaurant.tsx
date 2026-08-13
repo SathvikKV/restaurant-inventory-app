@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -16,7 +16,6 @@ export default function CreateRestaurantScreen() {
   const [isBranchMode, setIsBranchMode] = useState(false);
   const [selectedParentId, setSelectedParentId] = useState("");
 
-  import { useEffect } from "react";
   useEffect(() => {
     async function fetchExisting() {
       const auth = loadAuth();

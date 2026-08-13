@@ -5,8 +5,13 @@ import { router } from "expo-router";
  * discarding all previous navigation history (e.g., clearing the onboarding stack).
  */
 export function resetStackAndNavigate(pathname: string) {
-  if (router.canDismiss()) {
-    router.dismissAll();
+  if (typeof router.dismissTo === "function") {
+    router.dismissTo(pathname as any);
+  } else {
+    // Fallback if dismissTo doesn't exist
+    if (router.canDismiss()) {
+      router.dismissAll();
+    }
+    router.replace(pathname as any);
   }
-  router.replace(pathname as any);
 }
