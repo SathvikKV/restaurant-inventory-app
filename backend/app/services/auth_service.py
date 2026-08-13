@@ -76,7 +76,7 @@ async def get_or_create_user(db: AsyncSession, phone: str) -> tuple[User, bool]:
     user = result.scalar_one_or_none()
     if user:
         return user, False
-    user = User(phone=phone, name=None, role="manager")
+    user = User(phone=phone, name=None)
     db.add(user)
     await db.commit()
     await db.refresh(user)
@@ -91,7 +91,8 @@ async def get_user_tenants(db: AsyncSession, user_id: uuid.UUID) -> list[Tenant]
     """Return all tenants this user belongs to."""
     result = await db.execute(
         select(Tenant)
-        .join(User, User.tenant_id == Tenant.id)
+        .join(UserTenantMembership, UserTenantMembership.tenant_id == Tenant.id)
+        .join(User, User.id == UserTenantMembership.user_id)
         .where(User.id == user_id, Tenant.is_active == True)
     )
     return result.scalars().all()
