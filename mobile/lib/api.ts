@@ -50,11 +50,12 @@ export async function verifyOTP(phone: string, otp: string) {
 export async function createRestaurant(
   token: string,
   name: string,
-  city?: string
+  city?: string,
+  parentTenantId?: string
 ) {
   return request<{ id: string; name: string; schema_name: string }>(
     "/restaurants",
-    { method: "POST", body: JSON.stringify({ name, city, tenant_type: "restaurant" }) },
+    { method: "POST", body: JSON.stringify({ name, city, tenant_type: "restaurant", parent_tenant_id: parentTenantId }) },
     token
   );
 }

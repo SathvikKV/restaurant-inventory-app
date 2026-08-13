@@ -34,7 +34,7 @@ export default function SwitchRestaurantScreen() {
     setSwitching(id);
     try {
       const res = await selectRestaurant(auth.token, id);
-      saveAuth({
+      await saveAuth({
         ...auth,
         token: res.access_token,
         role: res.role || auth.role || "manager", // Fallback to current if missing

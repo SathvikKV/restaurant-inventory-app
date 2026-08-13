@@ -30,47 +30,51 @@ export default function AppStackLayout() {
     if (!auth.token) return;
 
     async function registerForPushNotificationsAsync() {
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
-        });
-      }
-
-      if (Device.isDevice) {
-        const permissions: any = await Notifications.getPermissionsAsync();
-        let finalStatus = permissions.status || (permissions.granted ? 'granted' : 'undetermined');
-        if (finalStatus !== 'granted') {
-          await new Promise<void>((resolve) => {
-            Alert.alert(
-              "Enable Notifications",
-              "We need notifications to alert you about low stock and pending confirmations.",
-              [
-                { text: "Not Now", style: "cancel", onPress: () => resolve() },
-                { 
-                  text: "Enable", 
-                  onPress: async () => {
-                    const req: any = await Notifications.requestPermissionsAsync();
-                    finalStatus = req.status || (req.granted ? 'granted' : 'undetermined');
-                    resolve();
-                  } 
-                }
-              ]
-            );
+      try {
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'default',
+            importance: Notifications.AndroidImportance.MAX,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#FF231F7C',
           });
         }
-        if (finalStatus !== 'granted') return;
 
-        try {
+        if (Device.isDevice) {
+          const permissions: any = await Notifications.getPermissionsAsync();
+          let finalStatus = permissions.status || (permissions.granted ? 'granted' : 'undetermined');
+          if (finalStatus !== 'granted') {
+            await new Promise<void>((resolve) => {
+              Alert.alert(
+                "Enable Notifications",
+                "We need notifications to alert you about low stock and pending confirmations.",
+                [
+                  { text: "Not Now", style: "cancel", onPress: () => resolve() },
+                  { 
+                    text: "Enable", 
+                    onPress: async () => {
+                      try {
+                        const req: any = await Notifications.requestPermissionsAsync();
+                        finalStatus = req.status || (req.granted ? 'granted' : 'undetermined');
+                      } catch (e) {
+                        console.error("Permission request error", e);
+                      }
+                      resolve();
+                    } 
+                  }
+                ]
+              );
+            });
+          }
+          if (finalStatus !== 'granted') return;
+
           const pushTokenString = (await Notifications.getExpoPushTokenAsync({
             projectId: "03676612-e881-4ed6-944e-d2d34ce2cb76"
           })).data;
           await registerPushToken(auth.token!, pushTokenString);
-        } catch (e) {
-          console.error("Push token error", e);
         }
+      } catch (e) {
+        console.error("Push token error", e);
       }
     }
 

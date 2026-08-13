@@ -31,6 +31,7 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     schema_name: Mapped[str] = mapped_column(String(63), nullable=False, unique=True)
     tenant_type: Mapped[TenantType] = mapped_column(SAEnum(TenantType), default=TenantType.restaurant)
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("public.tenants.id", ondelete="SET NULL"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     spreadsheet_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

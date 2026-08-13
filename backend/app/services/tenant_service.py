@@ -87,6 +87,7 @@ async def create_tenant(
         name=display_name,
         schema_name=schema_name,
         tenant_type=tenant_type,
+        parent_id=parent_tenant_id,
         is_active=True,
     )
     db.add(tenant)
