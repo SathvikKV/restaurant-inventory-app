@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user
+from app.constants import PURCHASE_SOURCE
 from app.services.tenant_registry import get_tenant_models, require_schema
 from app.services.embeddings import get_embedding
 from app.services.transaction_log import log_transaction
@@ -47,7 +48,16 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
 
     from app.models.public import User, Tenant
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
-    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    tenant_id_str = user.get("tenant_id")
+    tenant_record = None
+    if user_record and tenant_id_str:
+        from app.models.public import UserTenantMembership
+        from sqlalchemy import select
+        mem_res = await db.execute(
+            select(Tenant).join(UserTenantMembership, UserTenantMembership.tenant_id == Tenant.id)
+            .where(UserTenantMembership.user_id == user_record.id, UserTenantMembership.tenant_id == uuid.UUID(tenant_id_str))
+        )
+        tenant_record = mem_res.scalar_one_or_none()
     spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
 
     recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
@@ -55,14 +65,15 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
         recorded_by_name = user["user_id"]
 
     norm_qty, norm_unit = normalize_to_base(confirmation.quantity, confirmation.unit)
+    
+    from app.constants import INDENT_SOURCE
+    is_indent_source = (confirmation.source == INDENT_SOURCE)
+    
     item = None
     if body.action == "same":
         result = await db.execute(select(InventoryItem).where(func.lower(InventoryItem.item) == confirmation.candidate_name.strip().lower()))
         item = result.scalar_one_or_none()
         if item:
-            from app.constants import INDENT_SOURCE
-            is_indent_source = confirmation.source == INDENT_SOURCE
-            
             old_qty = item.current_qty
             item.unit = norm_unit
             item.previous_qty = item.current_qty
@@ -85,8 +96,6 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
                 recorded_by=recorded_by_name, source_reference=confirmation.source_reference or f"Confirmation #{confirmation.id}"
             )
     elif body.action == "different":
-        from app.constants import INDENT_SOURCE
-        is_indent_source = confirmation.source == INDENT_SOURCE
         if is_indent_source:
             # Indent = consumption, not receipt. Create the new item at zero stock so no phantom
             # inventory is created, then immediately deduct the consumed quantity so the item
@@ -182,7 +191,7 @@ async def resolve_confirmation(confirmation_id: uuid.UUID, body: ResolveConfirma
             # We resolved the pack size, but now we need an identity review. 
             # We convert this confirmation into an identity confirmation.
             confirmation.status = "pending"
-            confirmation.source = "purchase"
+            confirmation.source = PURCHASE_SOURCE
             confirmation.candidate_name = best_item.item
             confirmation.score = match_result["score"]
             confirmation.quantity = norm_qty

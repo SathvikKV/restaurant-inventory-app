@@ -62,7 +62,7 @@ export default function CreateRestaurantScreen() {
                 <User size={20} color={colors.textMuted} strokeWidth={2} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted, marginBottom: 2 }}>Restaurant Name</Text>
-                  <TextInput value={name} onChangeText={setName} placeholder="Spice Garden" placeholderTextColor={colors.textMuted} autoFocus style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, padding: 0 }} />
+                  <TextInput value={name} onChangeText={setName} placeholder="e.g. Joe's Diner" placeholderTextColor={colors.textMuted} autoFocus style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, padding: 0 }} />
                 </View>
               </View>
 
@@ -72,7 +72,7 @@ export default function CreateRestaurantScreen() {
                 <MapPin size={20} color={colors.textMuted} strokeWidth={2} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted, marginBottom: 2 }}>Branch Name (Optional)</Text>
-                  <TextInput value={branch} onChangeText={setBranch} placeholder="Koramangala, Bengaluru" placeholderTextColor={colors.textMuted} style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, padding: 0 }} />
+                  <TextInput value={branch} onChangeText={setBranch} placeholder="e.g. Downtown" placeholderTextColor={colors.textMuted} style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, padding: 0 }} />
                 </View>
               </View>
             </View>

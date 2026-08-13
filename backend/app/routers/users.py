@@ -12,7 +12,7 @@ from app.middleware.auth_middleware import get_current_user
 from app.services.tenant_registry import require_schema, get_tenant_models
 from app.services.mise_auth import verify_mise_service_token
 from app.services.tenant_service import find_identity_by_phone
-from app.models.public import User, Tenant
+from app.models.public import User, Tenant, UserTenantMembership
 from app.schemas.common import UserResponse, UserCreate, UserUpdate
 from pydantic import BaseModel
 
@@ -30,13 +30,13 @@ class RegisterPushTokenRequest(BaseModel):
 
 router = APIRouter()
 
-def _map_user_response(user: User) -> dict:
+def _map_user_response(user: User, role: str, tenant_id: str) -> dict:
     return {
         "id": str(user.id),
         "name": user.name or "",
         "phone": user.phone,
-        "role": user.role.value if hasattr(user.role, 'value') else user.role,
-        "restaurant_id": str(user.tenant_id) if user.tenant_id else "",
+        "role": role,
+        "restaurant_id": tenant_id,
         "is_active": user.is_active,
     }
 
@@ -50,11 +50,11 @@ async def list_users(
     if not tenant_id:
         raise HTTPException(status_code=400, detail="User has no assigned restaurant")
 
-    stmt = select(User).where(User.tenant_id == uuid.UUID(tenant_id))
+    stmt = select(User, UserTenantMembership).join(UserTenantMembership, User.id == UserTenantMembership.user_id).where(UserTenantMembership.tenant_id == uuid.UUID(tenant_id))
     result = await db.execute(stmt)
-    users = result.scalars().all()
+    rows = result.all()
     
-    return [_map_user_response(u) for u in users]
+    return [_map_user_response(u, m.role.value if hasattr(m.role, 'value') else m.role, tenant_id) for u, m in rows]
 
 
 @router.get("/{user_id}", response_model=UserResponse, summary="Get a single user")
@@ -67,15 +67,17 @@ async def get_user(
     if not tenant_id:
         raise HTTPException(status_code=400, detail="User has no assigned restaurant")
 
-    user = await db.get(User, uuid.UUID(user_id))
-    if not user or str(user.tenant_id) != tenant_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
-    return _map_user_response(user)
+    stmt = select(User, UserTenantMembership).join(UserTenantMembership, User.id == UserTenantMembership.user_id).where(User.id == uuid.UUID(user_id), UserTenantMembership.tenant_id == uuid.UUID(tenant_id))
+    result = await db.execute(stmt)
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found in this restaurant")
+    user, membership = row
+    return _map_user_response(user, membership.role.value if hasattr(membership.role, 'value') else membership.role, tenant_id)
 
 
-@router.post("/invite", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="Invite a new user")
-async def invite_user(
+@router.post("/invite-to-restaurant", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="Add existing user to restaurant")
+async def invite_to_restaurant(
     body: UserCreate,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -92,28 +94,31 @@ async def invite_user(
     result = await db.execute(stmt)
     existing_user = result.scalar_one_or_none()
 
-    if existing_user:
-        if existing_user.tenant_id:
-            raise HTTPException(status_code=400, detail="User already belongs to a restaurant")
+    if not existing_user:
+        raise HTTPException(status_code=400, detail="This phone number hasn't signed up yet")
+
+    # Check if they are already in this restaurant
+    mem_stmt = select(UserTenantMembership).where(UserTenantMembership.user_id == existing_user.id, UserTenantMembership.tenant_id == uuid.UUID(tenant_id))
+    mem_res = await db.execute(mem_stmt)
+    existing_mem = mem_res.scalar_one_or_none()
+
+    if existing_mem:
+        raise HTTPException(status_code=400, detail="User already belongs to this restaurant")
+
+    # Update name if it was null
+    if not existing_user.name and body.name:
         existing_user.name = body.name
-        existing_user.role = body.role
-        existing_user.tenant_id = uuid.UUID(tenant_id)
-        existing_user.is_active = True
-        user_to_return = existing_user
-    else:
-        new_user = User(
-            phone=body.phone,
-            name=body.name,
-            role=body.role,
-            tenant_id=uuid.UUID(tenant_id),
-            is_active=True
-        )
-        db.add(new_user)
-        user_to_return = new_user
+
+    new_membership = UserTenantMembership(
+        user_id=existing_user.id,
+        tenant_id=uuid.UUID(tenant_id),
+        role=body.role
+    )
+    db.add(new_membership)
 
     await db.commit()
-    await db.refresh(user_to_return)
-    return _map_user_response(user_to_return)
+    await db.refresh(existing_user)
+    return _map_user_response(existing_user, body.role, tenant_id)
 
 
 @router.patch("/{user_id}", response_model=UserResponse, summary="Update a user's role or status")
@@ -130,20 +135,24 @@ async def update_user(
     if current_user.get("role") != "owner":
         raise HTTPException(status_code=403, detail="Only owner can update users")
 
-    user = await db.get(User, uuid.UUID(user_id))
-    if not user or str(user.tenant_id) != tenant_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    stmt = select(User, UserTenantMembership).join(UserTenantMembership, User.id == UserTenantMembership.user_id).where(User.id == uuid.UUID(user_id), UserTenantMembership.tenant_id == uuid.UUID(tenant_id))
+    result = await db.execute(stmt)
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found in this restaurant")
+    user, membership = row
 
     if body.name is not None:
         user.name = body.name
     if body.role is not None:
-        user.role = body.role
+        membership.role = body.role
     if body.is_active is not None:
+        # Note: changing is_active here deactivated the WHOLE user account before.
+        # Now we'll just keep that behavior for legacy reasons, but usually you'd want to pause membership.
         user.is_active = body.is_active
 
     await db.commit()
-    await db.refresh(user)
-    return _map_user_response(user)
+    return _map_user_response(user, membership.role.value if hasattr(membership.role, 'value') else membership.role, tenant_id)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Deactivate a user")
@@ -159,9 +168,13 @@ async def deactivate_user(
     if current_user.get("role") != "owner":
         raise HTTPException(status_code=403, detail="Only owner can deactivate users")
 
-    user = await db.get(User, uuid.UUID(user_id))
-    if user and str(user.tenant_id) == tenant_id:
-        user.is_active = False
+    stmt = select(UserTenantMembership).where(UserTenantMembership.user_id == uuid.UUID(user_id), UserTenantMembership.tenant_id == uuid.UUID(tenant_id))
+    result = await db.execute(stmt)
+    membership = result.scalar_one_or_none()
+    
+    if membership:
+        # Instead of deactivating the whole user account, just remove their membership from this restaurant
+        await db.delete(membership)
         await db.commit()
 
     return None

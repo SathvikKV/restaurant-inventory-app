@@ -7,6 +7,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../../lib/auth-context";
 import { saveOCRInvoice, uploadInvoice, previewMatch, classifyDocument, uploadIndent, saveOCRIndent, OCRResult, IndentOCRResult, LineItem, PreviewMatchResult } from "../../lib/api";
 import { colors, PrimaryButton } from "../../components/ui";
+import { AutocompleteSearch } from "../../components/AutocompleteSearch";
 
 type Stage = "capture" | "processing" | "review" | "recorded";
 type DocType = "supplier_invoice" | "kitchen_indent" | "unknown";
@@ -338,14 +339,22 @@ export default function ScanInvoiceScreen() {
           {(docType === "kitchen_indent" ? indentResult?.line_items || [] : result?.line_items || []).map((item: any, idx: number, arr: any[]) => {
             const isAmbiguous = previewResults.some(p => p.item_name === item.item_name && p.match_status === "needs_review");
             return (
-              <View key={idx} style={{ padding: 16, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: colors.border, gap: 12 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View key={idx} style={{ padding: 16, borderBottomWidth: idx < arr.length - 1 ? 1 : 0, borderBottomColor: colors.border, gap: 12, zIndex: arr.length - idx }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 10 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
                     <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: isAmbiguous ? "#FFF7ED" : "#F4F5F7", borderWidth: 1, borderColor: isAmbiguous ? "#FED7AA" : colors.border, alignItems: "center", justifyContent: "center" }}>
                       {isAmbiguous ? <HelpCircle size={18} color="#EA580C" /> : <Package size={18} color={colors.textMuted} strokeWidth={2} />}
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain }}>{item.item_name}</Text>
+                    <View style={{ flex: 1, zIndex: 50 }}>
+                      <AutocompleteSearch
+                        value={item.item_name}
+                        onChangeText={(val) => handleUpdateLineItem(idx, "item_name", val)}
+                        onSelect={(selected) => {
+                          setResolutions(prev => ({ ...prev, [item.item_name]: { same: true, target_item_id: selected.id } }));
+                          handleUpdateLineItem(idx, "item_name", selected.name);
+                        }}
+                        placeholder="Item name"
+                      />
                       {isAmbiguous && (
                         <Text style={{ fontSize: 11, fontWeight: "700", color: "#EA580C", marginTop: 2 }}>Needs review — possible match to an existing item</Text>
                       )}

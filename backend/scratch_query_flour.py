@@ -10,8 +10,9 @@ async def main():
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     
     async with async_session() as session:
-        result = await session.execute(text("SELECT extracted_name, unit_price FROM minerva_coffee_shop.confirmations WHERE extracted_name ILIKE '%flour%';"))
+        result = await session.execute(text("SELECT id, item, current_qty, unit, avg_price_per_base_unit FROM minerva_coffee_shop.inventory WHERE item = 'All-purpose flour';"))
         items = result.fetchall()
+        print("Raw Database Data:")
         for item in items:
             print(dict(item._mapping))
 

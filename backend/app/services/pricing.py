@@ -18,10 +18,23 @@ def update_moving_average_price(old_avg_price: float | None, old_qty: float, inc
     old_qty must be the quantity *before* the incoming quantity was added.
     """
     incoming_price_per_base_unit = price_per_base_unit(incoming_unit_price, incoming_purchase_unit)
+    incoming_price_per_base_unit_paise = incoming_price_per_base_unit * 100.0
     
     if old_avg_price is not None and old_qty > 0:
-        new_avg = (old_avg_price * old_qty + incoming_price_per_base_unit * incoming_qty) / (old_qty + incoming_qty)
+        new_avg = (old_avg_price * old_qty + incoming_price_per_base_unit_paise * incoming_qty) / (old_qty + incoming_qty)
     else:
-        new_avg = incoming_price_per_base_unit
+        new_avg = incoming_price_per_base_unit_paise
         
     return int(round(new_avg))
+
+def to_paise(rupees: float | None) -> int | None:
+    """Safely converts a rupee amount to paise, handling None and rounding."""
+    if rupees is None:
+        return None
+    return int(round(float(rupees) * 100))
+
+def to_rupees(paise: int | float | None) -> float | None:
+    """Safely converts a paise amount to rupees, handling None."""
+    if paise is None:
+        return None
+    return float(paise) / 100.0

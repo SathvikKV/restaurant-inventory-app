@@ -5,8 +5,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { ChevronLeft, Save } from "lucide-react-native";
 import { colors } from "../../components/ui";
 import { useAuth } from "../../lib/auth-context";
-import { getRecipe, updateRecipeIngredients } from "../../lib/api";
-import RecipeIngredientsEditor, { EditableIngredient, CATEGORIES, UNITS } from "../../components/RecipeIngredientsEditor";
+import { getRecipe, updateRecipeIngredients, getUnits } from "../../lib/api";
+import RecipeIngredientsEditor, { EditableIngredient, CATEGORIES } from "../../components/RecipeIngredientsEditor";
 
 export default function RecipeDetailScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
@@ -15,19 +15,23 @@ export default function RecipeDetailScreen() {
   const [ingredients, setIngredients] = useState<EditableIngredient[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [availableUnits, setAvailableUnits] = useState<string[]>(["piece"]);
 
   useEffect(() => {
     async function load() {
       if (!auth.token || !id) return;
       try {
         setLoading(true);
-        const res = await getRecipe(auth.token, id);
+        const units = await getUnits(auth.token).catch(() => ["piece"]);
+        setAvailableUnits(units);
+        
+        const res = await getRecipe(auth.token, id as string);
         if (res.name) setRecipeName(res.name);
         const mapped: EditableIngredient[] = (res.ingredients || []).map((i: any) => ({
           _id: i.id || Math.random().toString(36).substring(2, 9),
           name: i.name || "",
           category: CATEGORIES.includes(i.category?.toLowerCase()) ? i.category.toLowerCase() : "misc",
-          unit: UNITS.includes(i.unit?.toLowerCase()) ? i.unit.toLowerCase() : "other",
+          unit: i.unit?.toLowerCase() || "piece",
           quantity_per_serving: i.quantity_per_serving ?? 0,
         }));
         setIngredients(mapped);
@@ -90,7 +94,7 @@ export default function RecipeDetailScreen() {
               EDIT INGREDIENTS BREAKDOWN
             </Text>
 
-            <RecipeIngredientsEditor ingredients={ingredients} onChange={setIngredients} style={{ marginBottom: 32 }} />
+            <RecipeIngredientsEditor units={availableUnits} ingredients={ingredients} onChange={setIngredients} style={{ marginBottom: 32 }} />
           </ScrollView>
 
           <TouchableOpacity

@@ -249,8 +249,10 @@ Instructions for line_items:
         for item in data.get("line_items", []):
             up = item.get("unit_price")
             tp = item.get("total_price")
-            up_paise = int(round(float(up) * 100)) if up is not None else None
-            tp_paise = int(round(float(tp) * 100)) if tp is not None else None
+            
+            from app.services.pricing import to_paise
+            up_paise = to_paise(up)
+            tp_paise = to_paise(tp)
             
             li = OCRLineItem(
                 item_name=item.get("item_name"),
@@ -269,7 +271,8 @@ Instructions for line_items:
             parsed_items.append(li)
 
         ta = data.get("total_amount")
-        ta_paise = int(round(float(ta) * 100)) if ta is not None else None
+        from app.services.pricing import to_paise
+        ta_paise = to_paise(ta)
 
         return OCRResult(
             invoice_number=data.get("invoice_number"),

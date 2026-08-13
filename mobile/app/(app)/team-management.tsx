@@ -63,7 +63,7 @@ export default function TeamManagementScreen() {
         Alert.alert("Success", "Staff member connected");
       } else {
         await inviteUser(auth.token, fullPhone, name, role);
-        Alert.alert("Success", "Invitation sent");
+        Alert.alert("Success", "User added to restaurant");
       }
       setName("");
       setPhone("");
@@ -108,8 +108,13 @@ export default function TeamManagementScreen() {
 
         {/* Invite Form */}
         <View>
-          <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, marginBottom: 12 }}>Invite New Member</Text>
+          <Text style={{ fontSize: 17, fontWeight: "800", color: colors.textMain, marginBottom: 12 }}>Add Team Member</Text>
           <View style={{ backgroundColor: "white", borderRadius: 24, borderWidth: 1, borderColor: colors.border, padding: 20, gap: 16 }}>
+            {role !== "kitchen_staff" && (
+              <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: -4 }}>
+                Adds an existing Kosh user to this restaurant. They must have already signed up with this phone number.
+              </Text>
+            )}
             <TextInput
               placeholder="Name"
               value={name}
@@ -152,7 +157,7 @@ export default function TeamManagementScreen() {
               </TouchableOpacity>
             </View>
             <TouchableOpacity onPress={handleInvite} disabled={inviting || !name || !phone} style={{ backgroundColor: colors.primary, borderRadius: 16, padding: 16, alignItems: "center", marginTop: 8, opacity: inviting || !name || !phone ? 0.7 : 1 }}>
-              <Text style={{ color: "white", fontSize: 15, fontWeight: "800" }}>{inviting ? "Saving..." : (role === "kitchen_staff" ? "Connect Staff" : "Send Invitation")}</Text>
+              <Text style={{ color: "white", fontSize: 15, fontWeight: "800" }}>{inviting ? "Saving..." : (role === "kitchen_staff" ? "Connect Staff" : "Add to Restaurant")}</Text>
             </TouchableOpacity>
           </View>
         </View>

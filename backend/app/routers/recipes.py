@@ -62,7 +62,16 @@ async def bulk_create_recipes(
     InventoryItem = models["inventory"]
 
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
-    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    tenant_id_str = user.get("tenant_id")
+    tenant_record = None
+    if user_record and tenant_id_str:
+        from app.models.public import UserTenantMembership
+        from sqlalchemy import select
+        mem_res = await db.execute(
+            select(Tenant).join(UserTenantMembership, UserTenantMembership.tenant_id == Tenant.id)
+            .where(UserTenantMembership.user_id == user_record.id, UserTenantMembership.tenant_id == uuid.UUID(tenant_id_str))
+        )
+        tenant_record = mem_res.scalar_one_or_none()
     spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
 
     recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]

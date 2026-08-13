@@ -4,7 +4,6 @@ import { X, ChevronDown, Plus } from "lucide-react-native";
 import { colors } from "./ui";
 
 export const CATEGORIES = ["produce", "proteins", "dairy", "dry goods", "beverages", "bakery", "packaging", "cleaning", "misc"];
-export const UNITS = ["kg", "g", "litre", "ml", "piece", "packet", "dozen", "bottle", "other"];
 
 export type EditableIngredient = {
   _id: string;
@@ -17,10 +16,11 @@ export type EditableIngredient = {
 type Props = {
   ingredients: EditableIngredient[];
   onChange: (updated: EditableIngredient[]) => void;
+  units: string[];
   style?: any;
 };
 
-export default function RecipeIngredientsEditor({ ingredients, onChange, style }: Props) {
+export default function RecipeIngredientsEditor({ ingredients, onChange, units, style }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerType, setPickerType] = useState<"category" | "unit" | null>(null);
   const [pickerIndex, setPickerIndex] = useState<number | null>(null);
@@ -124,7 +124,7 @@ export default function RecipeIngredientsEditor({ ingredients, onChange, style }
               Select {pickerType === "category" ? "Category" : "Unit"}
             </Text>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {(pickerType === "category" ? CATEGORIES : UNITS).map((opt) => (
+              {(pickerType === "category" ? CATEGORIES : units).map((opt) => (
                 <TouchableOpacity
                   key={opt}
                   onPress={() => selectPickerValue(opt)}

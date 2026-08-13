@@ -68,7 +68,7 @@ export default function HomeScreen() {
     fetchHomeData();
   }, [auth.token]);
 
-  const restaurantName = auth.restaurantName || "Minerva Coffee Shop";
+  const restaurantName = auth.restaurantName || "Restaurant";
   const score = health.score;
   const badgeLabel = health.label || (score >= 80 ? "Healthy" : "Needs Work");
   let badgeBg = score >= 80 ? "#ECFDF5" : score >= 50 ? "#FFF7ED" : "#FEF2F2";
@@ -111,8 +111,6 @@ export default function HomeScreen() {
             </Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textMuted }}>{restaurantName}</Text>
-              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.border }} />
-              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textMuted }}>Hyderabad</Text>
             </View>
           </View>
           <TouchableOpacity

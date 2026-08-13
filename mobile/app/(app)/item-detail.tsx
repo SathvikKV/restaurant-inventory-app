@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { ChevronLeft, MoreVertical, AlertTriangle, PenLine, ArrowDownToLine, Package, CheckCircle, Maximize2 } from "lucide-react-native";
 import { colors } from "../../components/ui";
 import { useAuth } from "../../lib/auth-context";
-import { getItemHistory, TransactionHistoryItem } from "../../lib/api";
+import { getItemHistory, TransactionHistoryItem, updateInventoryItem, getInventoryItem } from "../../lib/api";
 import { ImagePreviewModal } from "../../components/ImagePreviewModal";
 import { formatForDisplay, toDisplayPair } from "../../lib/units";
+import { AutocompleteSearch } from "../../components/AutocompleteSearch";
 
 const TYPE_COLORS: Record<string, string> = {
   receive: "#059669",
@@ -82,22 +83,34 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function ItemDetailScreen() {
   const { itemJson } = useLocalSearchParams<{ itemJson: string }>();
-  const item = JSON.parse(itemJson || "{}");
+  const [item, setItem] = useState(() => JSON.parse(itemJson || "{}"));
   const { auth } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
   const [history, setHistory] = useState<TransactionHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editName, setEditName] = useState(item.name);
+  const [editUnit, setEditUnit] = useState(item.unit);
+  const [editThreshold, setEditThreshold] = useState(String(item.suggested_purchase || 0));
+  const [editCategory, setEditCategory] = useState(item.category || "misc");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchHistory = async (isRefresh = false) => {
     if (!auth.token || !item.id) return;
     if (!isRefresh) setLoadingHistory(true);
     try {
-      const data = await getItemHistory(auth.token!, item.id);
-      setHistory(data || []);
+      const [histData, itemData] = await Promise.all([
+        getItemHistory(auth.token!, item.id).catch(() => []),
+        getInventoryItem(auth.token!, item.id).catch(() => null)
+      ]);
+      setHistory(histData || []);
+      if (itemData) {
+        setItem((prev: any) => ({ ...prev, ...itemData }));
+      }
     } catch (e) {
-      console.error("Failed to load item history:", e);
+      console.error("Failed to load item details:", e);
     } finally {
       setLoadingHistory(false);
       setRefreshing(false);
@@ -112,6 +125,26 @@ export default function ItemDetailScreen() {
   useEffect(() => {
     fetchHistory();
   }, [auth.token, item.id]);
+
+  const handleEditSave = async () => {
+    if (!auth.token) return;
+    setSavingEdit(true);
+    try {
+      await updateInventoryItem(auth.token, item.id, {
+        item: editName,
+        unit: editUnit,
+        reorder_threshold: Number(editThreshold) || 0,
+        category: editCategory
+      });
+      // Close modal and pop back to inventory list (since item object in this screen is passed via router params, it's easier to just go back so it refreshes)
+      setEditModalOpen(false);
+      router.back();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const isOut = item.quantity === 0;
 
@@ -129,55 +162,72 @@ export default function ItemDetailScreen() {
       {/* Top nav */}
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 }}>
         <TouchableOpacity
-          onPress={() => router.navigate("/(app)/(tabs)/inventory" as any)}
+          onPress={() => router.back()}
           style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}
         >
           <ChevronLeft size={24} color={colors.textMain} strokeWidth={2} />
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => setMenuOpen(!menuOpen)}
+          onPress={() => setEditModalOpen(true)}
           style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}
         >
-          <MoreVertical size={24} color={colors.textMain} strokeWidth={2} />
+          <PenLine size={20} color={colors.textMain} strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
-      {/* 3-dot menu */}
-      {menuOpen && (
-        <View style={{
-          position: "absolute",
-          top: 70,
-          right: 16,
-          width: 240,
-          backgroundColor: colors.card,
-          borderRadius: 24,
-          borderWidth: 1,
-          borderColor: colors.border,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.08,
-          shadowRadius: 24,
-          elevation: 10,
-          zIndex: 100,
-          overflow: "hidden",
-          paddingVertical: 8,
-        }}>
-          {["Edit Name", "Edit Buffer", "Edit Unit", "Change Category"].map(action => (
-            <TouchableOpacity
-              key={action}
-              onPress={() => setMenuOpen(false)}
-              style={{ paddingHorizontal: 20, paddingVertical: 16 }}
-            >
-              <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain }}>{action}</Text>
-            </TouchableOpacity>
-          ))}
+      {/* Edit Item Modal */}
+      {editModalOpen && (
+        <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", zIndex: 100, justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "white", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 }}>
+            <Text style={{ fontSize: 24, fontWeight: "800", color: colors.textMain, marginBottom: 24, letterSpacing: -0.5 }}>Edit Item</Text>
+            
+            <Text style={{ fontSize: 13, fontWeight: "800", color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>ITEM NAME</Text>
+            <View style={{ marginBottom: 16 }}>
+              <AutocompleteSearch
+                value={editName}
+                onChangeText={setEditName}
+                onSelect={(selected) => setEditName(selected.name)}
+                placeholder="Item name"
+                containerStyle={{ zIndex: 100 }}
+                inputStyle={{ backgroundColor: "#F7F7F8", borderWidth: 0, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, fontWeight: "700", color: colors.textMain }}
+              />
+            </View>
+            
+            <View style={{ flexDirection: "row", gap: 16, marginBottom: 16 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "800", color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>UNIT</Text>
+                <View style={{ backgroundColor: "#F7F7F8", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14 }}>
+                  <TextInput value={editUnit} onChangeText={setEditUnit} style={{ fontSize: 16, fontWeight: "700", color: colors.textMain, padding: 0 }} />
+                </View>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "800", color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>MIN BUFFER</Text>
+                <View style={{ backgroundColor: "#F7F7F8", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14 }}>
+                  <TextInput value={editThreshold} onChangeText={setEditThreshold} keyboardType="numeric" style={{ fontSize: 16, fontWeight: "700", color: colors.textMain, padding: 0 }} />
+                </View>
+              </View>
+            </View>
+
+            <Text style={{ fontSize: 13, fontWeight: "800", color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 }}>CATEGORY</Text>
+            <View style={{ backgroundColor: "#F7F7F8", borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 32 }}>
+              <TextInput value={editCategory} onChangeText={setEditCategory} style={{ fontSize: 16, fontWeight: "700", color: colors.textMain, padding: 0 }} />
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <TouchableOpacity onPress={() => setEditModalOpen(false)} style={{ flex: 1, backgroundColor: "#F7F7F8", borderRadius: 20, paddingVertical: 16, alignItems: "center" }}>
+                <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textMuted }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleEditSave} disabled={savingEdit} style={{ flex: 1, backgroundColor: colors.primary, borderRadius: 20, paddingVertical: 16, alignItems: "center", opacity: savingEdit ? 0.7 : 1 }}>
+                {savingEdit ? <ActivityIndicator color="white" /> : <Text style={{ fontSize: 16, fontWeight: "800", color: "white" }}>Save</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       )}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 120 }}
-        onScrollBeginDrag={() => setMenuOpen(false)}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
         {/* Item identity */}
@@ -251,42 +301,91 @@ export default function ItemDetailScreen() {
           elevation: 2,
         }}>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 0 }}>
-            <View style={{ width: "50%", paddingBottom: 24 }}>
-              <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Current Stock</Text>
-              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-                {(() => {
-                  const [dispQty, dispUnit] = toDisplayPair(item.quantity, item.unit);
-                  return (
-                    <>
+            {(() => {
+              const validValues = [
+                item.quantity,
+                item.suggested_purchase,
+                item.avg_daily_usage
+              ].filter(v => v != null).map(v => Math.abs(v));
+              
+              const maxVal = validValues.length > 0 ? Math.max(...validValues) : 0;
+              const [, commonUnit] = toDisplayPair(maxVal, item.unit);
+              
+              const formatCommon = (val: number) => {
+                const u = (item.unit || "").trim().toLowerCase();
+                if (u === "g" && commonUnit === "kg") return val / 1000;
+                if (u === "ml" && commonUnit === "L") return val / 1000;
+                return val;
+              };
+
+              const dispQty = formatCommon(item.quantity || 0);
+              const dispBuf = formatCommon(item.suggested_purchase || 0);
+              const useQty = item.avg_daily_usage != null ? formatCommon(item.avg_daily_usage) : null;
+
+              return (
+                <>
+                  <View style={{ width: "50%", paddingBottom: 24 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Current Stock</Text>
+                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
                       <Text style={{ fontSize: 28, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>{parseFloat(dispQty.toFixed(2))}</Text>
-                      <Text style={{ fontSize: 16, fontWeight: "600", color: colors.textMuted }}>{dispUnit}</Text>
-                    </>
-                  );
-                })()}
-              </View>
-            </View>
+                      <Text style={{ fontSize: 16, fontWeight: "600", color: colors.textMuted }}>{commonUnit}</Text>
+                    </View>
+                  </View>
+                  <View style={{ width: "50%", paddingBottom: 24 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Min Buffer</Text>
+                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                      <Text style={{ fontSize: 28, fontWeight: "800", color: "#F97316", letterSpacing: -0.5 }}>{parseFloat(dispBuf.toFixed(2))}</Text>
+                      <Text style={{ fontSize: 16, fontWeight: "600", color: "#FDBA74" }}>{commonUnit}</Text>
+                    </View>
+                  </View>
+                  <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: 24 }} />
+                  <View style={{ width: "50%", paddingBottom: 24 }}>
+                    <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Avg Daily Use</Text>
+                    <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                      {useQty == null ? (
+                        <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Unavailable</Text>
+                      ) : (
+                        <>
+                          <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>{parseFloat(useQty.toFixed(2))}</Text>
+                          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textMuted }}>{commonUnit}</Text>
+                        </>
+                      )}
+                    </View>
+                  </View>
+                </>
+              );
+            })()}
             <View style={{ width: "50%", paddingBottom: 24 }}>
-              <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Min Buffer</Text>
-              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-                {(() => {
-                  const [bufQty, bufUnit] = toDisplayPair(item.suggested_purchase || 0, item.unit);
-                  return (
-                    <>
-                      <Text style={{ fontSize: 28, fontWeight: "800", color: "#F97316", letterSpacing: -0.5 }}>{parseFloat(bufQty.toFixed(2))}</Text>
-                      <Text style={{ fontSize: 16, fontWeight: "600", color: "#FDBA74" }}>{bufUnit}</Text>
-                    </>
-                  );
-                })()}
-              </View>
+              <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Runway</Text>
+              {item.days_remaining == null ? (
+                <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Unavailable</Text>
+              ) : (
+                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                  <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>{Math.round(item.days_remaining)}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textMuted }}>Days</Text>
+                </View>
+              )}
             </View>
+
             <View style={{ width: "100%", height: 1, backgroundColor: colors.border, marginBottom: 24 }} />
             <View style={{ width: "50%" }}>
-              <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Avg Daily Use</Text>
-              <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>—</Text>
+              <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Avg Price/Unit</Text>
+              {item.avg_price_per_unit == null ? (
+                <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Unavailable</Text>
+              ) : (
+                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                  <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>₹{item.avg_price_per_unit.toFixed(2)}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textMuted }}>/{toDisplayPair(1.0, item.unit)[1]}</Text>
+                </View>
+              )}
             </View>
             <View style={{ width: "50%" }}>
-              <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Runway</Text>
-              <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>—</Text>
+              <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Stock Value</Text>
+              {item.stock_value == null ? (
+                <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.3 }}>Unavailable</Text>
+              ) : (
+                <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>₹{item.stock_value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+              )}
             </View>
           </View>
         </View>
@@ -419,3 +518,4 @@ export default function ItemDetailScreen() {
     </SafeAreaView>
   );
 }
+

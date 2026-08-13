@@ -8,6 +8,10 @@ from pydantic import BaseModel
 from app.database import get_db
 from app.config import get_settings
 from app.services.embeddings import get_embedding
+import hmac
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 settings = get_settings()
@@ -53,9 +57,13 @@ class SyncPayload(BaseModel):
 
 def _verify_sync_token(x_sync_token: str = Header(None)):
     """Simple shared-secret auth for Mise → Kosh sync calls."""
-    expected = getattr(settings, 'sync_secret', '') or settings.secret_key
-    if x_sync_token != expected:
-        raise HTTPException(status_code=401, detail="Invalid sync token")
+    sync_secret = getattr(settings, 'sync_secret', None)
+    if not sync_secret:
+        logger.error("SYNC_SECRET is not configured on this environment. Failing closed.")
+        raise HTTPException(status_code=500, detail="Sync authentication is misconfigured")
+        
+    if not x_sync_token or not hmac.compare_digest(x_sync_token.encode('utf-8'), sync_secret.encode('utf-8')):
+        raise HTTPException(status_code=403, detail="Invalid sync token")
 
 @router.post("/ingest", summary="Ingest data from Mise backend")
 async def ingest_sync(

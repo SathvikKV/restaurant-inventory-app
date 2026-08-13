@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, TextInput } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { ChevronLeft, AlertCircle, AlertTriangle, Package, HelpCircle } from "lucide-react-native";
@@ -14,6 +14,7 @@ export default function NotificationsScreen() {
   const [confirmations, setConfirmations] = useState<ConfirmationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [packSizeModal, setPackSizeModal] = useState<{ isOpen: boolean; item: ConfirmationItem | null; packSizeText: string; packUnitText: string }>({ isOpen: false, item: null, packSizeText: "", packUnitText: "kg" });
 
   const loadData = useCallback(async () => {
     if (!auth.token) return;
@@ -36,20 +37,29 @@ export default function NotificationsScreen() {
     loadData();
   }, [loadData]);
 
-  const performResolve = async (id: string, action: "same" | "different") => {
+  const performResolve = async (id: string, action: "same" | "different" | "pack_size", pack_size?: number, pack_unit?: string) => {
     if (!auth.token) return;
     setResolvingId(id);
+    setPackSizeModal(prev => ({ ...prev, isOpen: false }));
     try {
-      await resolveConfirmation(auth.token, id, action);
+      const res = await resolveConfirmation(auth.token, id, action, pack_size, pack_unit) as any;
+      if (res.next_step === "review") {
+        Alert.alert("Pack Size Saved", "The pack size was saved, but the item identity now needs your review.");
+      }
       await loadData();
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to resolve item match");
+      Alert.alert("Error", e.message || "Failed to resolve item");
     } finally {
       setResolvingId(null);
     }
   };
 
   const handleTapConfirmation = (item: ConfirmationItem) => {
+    if (item.source === "purchase_pack_size") {
+      setPackSizeModal({ isOpen: true, item, packSizeText: "", packUnitText: "kg" });
+      return;
+    }
+
     const matchPct = Math.round(item.score * 100);
     const reasonText = item.ai_match_reason ? `\n\nFlag Reason:\n${item.ai_match_reason}` : "";
     Alert.alert(
@@ -109,10 +119,10 @@ export default function NotificationsScreen() {
                         </View>
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textMain, marginBottom: 4, letterSpacing: -0.2 }}>
-                            Extracted: {conf.extracted_name} → Existing: {conf.candidate_name} ({matchPct}% match)
+                            {conf.source === "purchase_pack_size" ? `Specify Pack Size: ${conf.extracted_name}` : `Extracted: ${conf.extracted_name} → Existing: ${conf.candidate_name} (${matchPct}% match)`}
                           </Text>
                           <Text style={{ fontSize: 13, fontWeight: "700", color: "#A16207" }}>
-                            {formatForDisplay(conf.quantity, conf.unit)} • Tap to resolve
+                            {conf.source === "purchase_pack_size" ? `${conf.quantity} ${conf.unit} scanned • Tap to enter pack size` : `${formatForDisplay(conf.quantity, conf.unit)} • Tap to resolve`}
                           </Text>
                           {conf.ai_match_reason && (
                             <Text style={{ fontSize: 12, color: "#DC2626", marginTop: 4, fontWeight: "600" }}>
@@ -164,6 +174,61 @@ export default function NotificationsScreen() {
           </>
         )}
       </ScrollView>
+      
+      {/* Pack Size Modal */}
+      <Modal visible={packSizeModal.isOpen} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 }}>
+          <View style={{ backgroundColor: colors.card, borderRadius: 24, padding: 24 }}>
+            <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textMain, marginBottom: 8 }}>Pack Size Required</Text>
+            <Text style={{ fontSize: 15, color: colors.textMuted, marginBottom: 20, lineHeight: 22 }}>
+              How much is in one {packSizeModal.item?.unit} of {packSizeModal.item?.extracted_name}?
+            </Text>
+            
+            <View style={{ flexDirection: "row", gap: 12, marginBottom: 24 }}>
+              <TextInput
+                style={{ flex: 1, backgroundColor: "#F3F4F6", borderRadius: 12, padding: 16, fontSize: 17, color: colors.textMain, fontWeight: "600" }}
+                keyboardType="numeric"
+                placeholder="E.g. 25"
+                placeholderTextColor="#9CA3AF"
+                value={packSizeModal.packSizeText}
+                onChangeText={t => setPackSizeModal(prev => ({ ...prev, packSizeText: t }))}
+              />
+              <View style={{ width: 100, backgroundColor: "#F3F4F6", borderRadius: 12, overflow: "hidden" }}>
+                <TextInput
+                  style={{ flex: 1, padding: 16, fontSize: 17, color: colors.textMain, fontWeight: "600", textAlign: "center" }}
+                  placeholder="Unit (kg/L)"
+                  placeholderTextColor="#9CA3AF"
+                  value={packSizeModal.packUnitText}
+                  onChangeText={t => setPackSizeModal(prev => ({ ...prev, packUnitText: t }))}
+                />
+              </View>
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => setPackSizeModal(prev => ({ ...prev, isOpen: false }))}
+                style={{ flex: 1, padding: 16, borderRadius: 12, backgroundColor: "#F3F4F6", alignItems: "center" }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textMain }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  const size = parseFloat(packSizeModal.packSizeText);
+                  const unit = packSizeModal.packUnitText.trim();
+                  if (isNaN(size) || size <= 0 || !unit) {
+                    Alert.alert("Invalid Input", "Please enter a valid number and unit.");
+                    return;
+                  }
+                  performResolve(packSizeModal.item!.id, "pack_size", size, unit);
+                }}
+                style={{ flex: 1, padding: 16, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center" }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#FFF" }}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

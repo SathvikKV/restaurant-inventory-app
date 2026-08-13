@@ -9,6 +9,9 @@ from app.services.embeddings import get_embedding, cosine_similarity
 
 logger = logging.getLogger(__name__)
 
+class GateEvaluationError(Exception):
+    pass
+
 # Use settings.gemini_api_key to ensure this works in production (EB env var)
 # rather than falling back to os.getenv which is not set locally.
 def _get_model():
@@ -69,9 +72,7 @@ def hard_number_unit_gate(extracted_name: str, candidate_name: str) -> bool:
                 # Round to 4 decimal places to avoid float comparison noise.
                 base_values.add(round(base_qty, 4))
             except Exception:
-                # Fail closed: any normalization failure means we cannot verify equivalence.
-                # Return a sentinel that will not match anything, blocking the auto-path.
-                base_values.add(f"__unresolvable_{num_str}_{unit_str}__")
+                raise GateEvaluationError("Failed to normalize unit or quantity for hard gate")
         return base_values
 
     extracted_vals = extract_base_values(extracted_name)
@@ -141,18 +142,31 @@ async def match_pipeline(extracted_name: str, quantity: float, unit: str, existi
     
     candidate_logs = []
     valid_candidates = []
-    for c, score in candidates_with_score:
-        passed_gate = hard_number_unit_gate(extracted_name, c.item)
-        if passed_gate:
-            valid_candidates.append(c)
-        candidate_logs.append({
-            "candidate_name": c.item,
-            "cosine_score": float(score),
-            "passed_hard_gate": passed_gate,
-            "ai_decision": None,
-            "ai_reason": None
-        })
+    gate_error = False
     
+    for c, score in candidates_with_score:
+        try:
+            passed_gate = hard_number_unit_gate(extracted_name, c.item)
+            if passed_gate:
+                valid_candidates.append(c)
+            candidate_logs.append({
+                "candidate_name": c.item,
+                "cosine_score": float(score),
+                "passed_hard_gate": passed_gate,
+                "ai_decision": None,
+                "ai_reason": None
+            })
+        except GateEvaluationError:
+            gate_error = True
+            candidate_logs.append({
+                "candidate_name": c.item,
+                "cosine_score": float(score),
+                "passed_hard_gate": "error",
+                "ai_decision": None,
+                "ai_reason": None
+            })
+            break
+
     def emit_log(final_outcome: str):
         log_payload = {
             "event": "matching_pipeline_calibration",
@@ -164,6 +178,12 @@ async def match_pipeline(extracted_name: str, quantity: float, unit: str, existi
         }
         logger.info(json.dumps(log_payload))
     
+    if gate_error:
+        emit_log("needs_review")
+        # Return the best candidate from the semantic search that triggered the error
+        best_c = candidates_with_score[0][0] if candidates_with_score else None
+        return {"status": "needs_review", "candidate": best_c, "reason": "Could not verify unit or quantity compatibility due to an internal error — needs manual review", "score": float(candidates_with_score[0][1]) if candidates_with_score else 0.0}
+
     if not valid_candidates:
         emit_log("new")
         return {"status": "new", "candidate": None, "reason": "No candidates passed recall/gate", "score": 0.0}

@@ -15,7 +15,7 @@ async def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> dict:
-    logger.info(f"[AUTH] {request.method} {request.url.path} - scheme={credentials.scheme}, token_prefix={credentials.credentials[:20] if credentials.credentials else 'EMPTY'}...")
+    logger.info(f"[AUTH] {request.method} {request.url.path} - scheme={credentials.scheme}, token_present={bool(credentials.credentials)}")
     try:
         payload = decode_access_token(credentials.credentials)
         logger.info(f"[AUTH] Token decoded successfully for user {payload.get('sub')}")

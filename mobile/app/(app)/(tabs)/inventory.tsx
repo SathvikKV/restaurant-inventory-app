@@ -292,7 +292,7 @@ export default function InventoryScreen() {
                         const [dispQty, dispUnit] = toDisplayPair(item.quantity, item.unit);
                         return (
                           <>
-                            <Text style={{ fontSize: 22, fontWeight: "800", color: colors.textMain, letterSpacing: -0.5 }}>{parseFloat(dispQty.toFixed(2))}</Text>
+                            <Text style={{ fontSize: 22, fontWeight: "800", color: item.quantity < 0 ? "#EF4444" : colors.textMain, letterSpacing: -0.5 }}>{parseFloat(dispQty.toFixed(2))}</Text>
                             <Text style={{ fontSize: 15, fontWeight: "600", color: colors.textMuted }}>{dispUnit}</Text>
                           </>
                         );

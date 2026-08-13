@@ -160,6 +160,11 @@ export default function AnalyticsScreen() {
                   <Text style={{ fontSize: 22, fontWeight: "800", color: "#ef4444" }}>{health.critical}</Text>
                   <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textMuted }}>Critical</Text>
                 </View>
+                <View style={{ width: 1, height: 32, backgroundColor: colors.border }} />
+                <View style={{ alignItems: "center" }}>
+                  <Text style={{ fontSize: 22, fontWeight: "800", color: colors.textMain }}>{health.total}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textMuted }}>Total Items</Text>
+                </View>
               </View>
             </View>
           </View>

@@ -49,3 +49,16 @@ def scoped_token(restaurant_token):
 @pytest.fixture(scope="session")
 def restaurant_id(restaurant_token):
     return restaurant_token[1]
+
+@pytest.fixture(autouse=True)
+def mock_unit_cache():
+    import app.services.units as units
+    units._UNIT_CACHE = {
+        "g": ("weight", 1.0),
+        "kg": ("weight", 1000.0),
+        "ml": ("volume", 1.0),
+        "l": ("volume", 1000.0),
+        "pcs": ("count", 1.0),
+        "dozen": ("count", 12.0)
+    }
+    units._CACHE_INITIALIZED = True

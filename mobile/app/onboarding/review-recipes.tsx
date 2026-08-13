@@ -5,8 +5,8 @@ import { router, useLocalSearchParams } from "expo-router";
 import { ChevronLeft, Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react-native";
 import { colors } from "../../components/ui";
 import { useAuth } from "../../lib/auth-context";
-import { saveRecipes } from "../../lib/api";
-import RecipeIngredientsEditor, { EditableIngredient, CATEGORIES, UNITS } from "../../components/RecipeIngredientsEditor";
+import { saveRecipes, getUnits } from "../../lib/api";
+import RecipeIngredientsEditor, { EditableIngredient, CATEGORIES } from "../../components/RecipeIngredientsEditor";
 
 type EditableDish = {
   _id: string;
@@ -20,6 +20,13 @@ export default function ReviewRecipesScreen() {
   const [dishes, setDishes] = useState<EditableDish[]>([]);
   const [saving, setSaving] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
+  const [availableUnits, setAvailableUnits] = useState<string[]>(["piece"]);
+
+  useEffect(() => {
+    if (auth.token) {
+      getUnits(auth.token).then(setAvailableUnits).catch(console.error);
+    }
+  }, [auth.token]);
 
   useEffect(() => {
     if (recipesJson) {
@@ -32,7 +39,7 @@ export default function ReviewRecipesScreen() {
             _id: Math.random().toString(36).substring(2, 9),
             name: ing.name || "",
             category: CATEGORIES.includes(ing.category?.toLowerCase()) ? ing.category.toLowerCase() : "misc",
-            unit: UNITS.includes(ing.unit?.toLowerCase()) ? ing.unit.toLowerCase() : "other",
+            unit: ing.unit?.toLowerCase() || "piece",
             quantity_per_serving: ing.quantity_per_serving ?? 0,
           })),
         }));
@@ -181,7 +188,7 @@ export default function ReviewRecipesScreen() {
                   {isExpanded && (
                     <View style={{ padding: 20, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: "#FAFCFA" }}>
                       <Text style={{ fontSize: 13, fontWeight: "800", color: colors.primary, marginBottom: 12, letterSpacing: 0.5 }}>CORE INGREDIENTS BREAKDOWN</Text>
-                      <RecipeIngredientsEditor ingredients={dish.ingredients} onChange={(updated) => updateDishIngredients(idx, updated)} />
+                      <RecipeIngredientsEditor units={availableUnits} ingredients={dish.ingredients} onChange={(updated) => updateDishIngredients(idx, updated)} />
                     </View>
                   )}
                 </View>

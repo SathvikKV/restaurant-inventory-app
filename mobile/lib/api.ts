@@ -75,9 +75,9 @@ export async function linkSheet(token: string, restaurantId: string, sheetIdOrUr
   );
 }
 
-export async function selectRestaurant(token: string, restaurantId: string) {
-  return request<{ access_token: string; schema: string; restaurant_name: string; role?: string }>(
-    `/restaurants/${restaurantId}/select`,
+export async function selectRestaurant(token: string, tenantId: string) {
+  return request<{ access_token: string; schema: string; restaurant_name: string; role?: string; tenant_id: string }>(
+    `/restaurants/${tenantId}/select`,
     { method: "POST" },
     token
   );
@@ -132,8 +132,25 @@ export async function getInventory(
   }[]>(`/inventory/${qs}`, { method: "GET" }, token);
 }
 
+export async function autocompleteInventory(token: string, q: string) {
+  if (!q || q.length < 2) return [];
+  return request<{id: string, name: string, unit: string}[]>(`/inventory/autocomplete?q=${encodeURIComponent(q)}`, { method: "GET" }, token);
+}
+
 export async function getInventoryItem(token: string, itemId: string) {
-  return request<{ id: string; name: string; quantity: number; unit: string; category: string }>(
+  return request<{
+    id: string;
+    name: string;
+    quantity: number;
+    unit: string;
+    category: string;
+    status: string;
+    avg_daily_usage: number | null;
+    runway: number | null;
+    avg_price_per_unit: number | null;
+    stock_value: number | null;
+    days_remaining?: number | null;
+  }>(
     `/inventory/${itemId}`, { method: "GET" }, token
   );
 }
@@ -384,7 +401,7 @@ export async function getFoodCostTrend(token: string, days = 7) {
 }
 
 export async function inviteUser(token: string, phone: string, name: string, role: "manager" | "owner"): Promise<any> {
-  const res = await fetch(`${BASE_URL}/users/invite`, {
+  const res = await fetch(`${BASE_URL}/users/invite-to-restaurant`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -489,6 +506,7 @@ export type ConfirmationItem = {
   quantity: number;
   unit: string;
   created_at: string;
+  source?: string;
   ai_match_reason?: string | null;
 };
 
@@ -500,10 +518,26 @@ export async function listConfirmations(token: string) {
   );
 }
 
-export async function resolveConfirmation(token: string, id: string, action: "same" | "different") {
-  return request<{ status: string }>(
+export async function resolveConfirmation(token: string, id: string, action: "same" | "different" | "pack_size", pack_size?: number, pack_unit?: string) {
+  const body: any = { action };
+  if (action === "pack_size") {
+    body.pack_size = pack_size;
+    body.pack_unit = pack_unit;
+  }
+  return request<{ status: string; message?: string; next_step?: string }>(
     `/confirmations/${id}/resolve`,
-    { method: "POST", body: JSON.stringify({ action }) },
+    { method: "POST", body: JSON.stringify(body) },
     token
   );
+}
+
+export async function getUnits(token: string): Promise<string[]> {
+  return request<string[]>("/units", {}, token);
+}
+
+export async function updateInventoryItem(token: string, itemId: string, data: { item?: string; unit?: string; reorder_threshold?: number; category?: string; }) {
+  return request<any>(`/inventory/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data)
+  }, token);
 }

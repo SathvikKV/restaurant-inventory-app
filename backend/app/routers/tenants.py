@@ -33,13 +33,15 @@ async def whitelist_directory(_: None = Depends(verify_mise_service_token), db: 
     directory = []
 
     # 1. Active users (owners & managers)
+    from app.models.public import UserTenantMembership
     users_res = await db.execute(
-        select(User, Tenant)
-        .join(Tenant, User.tenant_id == Tenant.id)
+        select(User, Tenant, UserTenantMembership)
+        .join(UserTenantMembership, User.id == UserTenantMembership.user_id)
+        .join(Tenant, UserTenantMembership.tenant_id == Tenant.id)
         .where(User.is_active == True, Tenant.is_active == True)
     )
-    for user, tenant in users_res.all():
-        role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    for user, tenant, membership in users_res.all():
+        role_str = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
         directory.append({
             "phone": user.phone,
             "telegram_id": user.telegram_id,

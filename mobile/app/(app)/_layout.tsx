@@ -11,12 +11,14 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
 export default function AppStackLayout() {
   const auth = useAuthStore();
-  const responseListener = useRef<Notifications.EventSubscription>();
+  const responseListener = useRef<any>(null);
 
   useEffect(() => {
     if (!auth.token) {
@@ -38,9 +40,9 @@ export default function AppStackLayout() {
       }
 
       if (Device.isDevice) {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        if (existingStatus !== 'granted') {
+        const permissions: any = await Notifications.getPermissionsAsync();
+        let finalStatus = permissions.status || (permissions.granted ? 'granted' : 'undetermined');
+        if (finalStatus !== 'granted') {
           await new Promise<void>((resolve) => {
             Alert.alert(
               "Enable Notifications",
@@ -50,8 +52,8 @@ export default function AppStackLayout() {
                 { 
                   text: "Enable", 
                   onPress: async () => {
-                    const { status } = await Notifications.requestPermissionsAsync();
-                    finalStatus = status;
+                    const req: any = await Notifications.requestPermissionsAsync();
+                    finalStatus = req.status || (req.granted ? 'granted' : 'undetermined');
                     resolve();
                   } 
                 }
@@ -76,15 +78,15 @@ export default function AppStackLayout() {
 
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
-      if (data.type === 'confirmation') {
+      if (data?.type === 'confirmation') {
         router.push("/(app)/notifications");
-      } else if (data.type === 'low_stock' && data.itemJson) {
-        router.push({ pathname: "/(app)/item-detail", params: { itemJson: data.itemJson } });
+      } else if (data?.type === 'low_stock' && data?.itemJson) {
+        router.push({ pathname: "/(app)/item-detail", params: { itemJson: data.itemJson as string } });
       }
     });
 
     return () => {
-      if (responseListener.current) Notifications.removeNotificationSubscription(responseListener.current);
+      if (responseListener.current) responseListener.current.remove();
     };
   }, [auth.token]);
 

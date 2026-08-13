@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Literal
 
 from app.database import get_db
 from app.middleware.auth_middleware import get_current_user, get_current_actor
+from app.constants import APP_SOURCE, PURCHASE_SOURCE, PURCHASE_PACK_SIZE_SOURCE
 from app.services.tenant_registry import get_tenant_models
 from app.services.embeddings import get_embedding, cosine_similarity
 from app.services.transaction_log import log_transaction
@@ -141,7 +142,7 @@ async def create_purchase_order(
             "expected_date": str(body.expected_date) if body.expected_date else None,
             "notes": body.notes,
         },
-        source="app"
+        source=APP_SOURCE
     )
     db.add(new_po)
     await db.commit()
@@ -331,7 +332,16 @@ async def create_purchase_from_ocr(
             raise HTTPException(status_code=400, detail="User has no assigned restaurant")
         from app.models.public import User, Tenant
         user_record = await db.get(User, uuid.UUID(actor["user_id"]))
-        tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+        tenant_id_str = user.get("tenant_id")
+    tenant_record = None
+    if user_record and tenant_id_str:
+        from app.models.public import UserTenantMembership
+        from sqlalchemy import select
+        mem_res = await db.execute(
+            select(Tenant).join(UserTenantMembership, UserTenantMembership.tenant_id == Tenant.id)
+            .where(UserTenantMembership.user_id == user_record.id, UserTenantMembership.tenant_id == uuid.UUID(tenant_id_str))
+        )
+        tenant_record = mem_res.scalar_one_or_none()
         spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
         recorded_by_name = getattr(user_record, "name", None) if user_record else actor["user_id"]
         if not recorded_by_name:
@@ -397,7 +407,7 @@ async def create_purchase_from_ocr(
                 unit=line.unit,
                 unit_price=line.unit_price,
                 purchase_unit=original_unit,
-                source="purchase_pack_size",
+                source=PURCHASE_PACK_SIZE_SOURCE,
                 source_reference=source_ref,
                 ai_match_reason=f"How much is in one {line.unit} of {line.item_name}?",
             ))
@@ -558,7 +568,7 @@ async def create_purchase_from_ocr(
                         unit=line.unit,
                         unit_price=line.unit_price,
                         purchase_unit=original_unit,
-                        source="purchase",
+                        source=PURCHASE_SOURCE,
                         source_reference=source_ref,
                         ai_match_reason=ai_reason,
                     ))

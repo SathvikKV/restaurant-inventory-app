@@ -16,6 +16,7 @@ const MENU_ITEMS: { icon: any; label: string; bg: string; color: string; badge?:
   { icon: FileText, label: "Activity History", bg: "#ECFDF5", color: "#059669", route: "/(app)/activity-history" },
   { icon: Receipt, label: "Invoices & KOTs", bg: "#F5F3FF", color: "#7C3AED", route: "/(app)/invoice-history" },
   { icon: Store, label: "Workspace Settings", bg: "#F4F5F7", color: "#687076", route: "/(app)/workspace-settings" },
+  { icon: Store, label: "Switch Restaurant", bg: "#FEF3C7", color: "#D97706", route: "/(app)/switch-restaurant" },
 ];
 
 
