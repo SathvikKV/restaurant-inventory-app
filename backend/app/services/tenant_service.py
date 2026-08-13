@@ -3,7 +3,7 @@ import re
 from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, text
-from app.models.public import Tenant, User
+from app.models.public import Tenant, User, UserTenantMembership
 from app.models.tenant import make_tenant_models
 from app.database import create_tenant_schema, engine, Base
 from app.services.tenant_registry import get_tenant_models
@@ -119,12 +119,20 @@ async def assign_user_to_tenant(
     tenant_id: uuid.UUID,
     role: str = "owner",
 ) -> User:
-    """Assign a user to a tenant and set their role."""
-    await db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .values(tenant_id=tenant_id, role=role)
+    """Assign a user to a tenant by creating/updating a UserTenantMembership row."""
+    # Check if membership already exists
+    existing = await db.execute(
+        select(UserTenantMembership).where(
+            UserTenantMembership.user_id == user_id,
+            UserTenantMembership.tenant_id == tenant_id,
+        )
     )
+    membership = existing.scalar_one_or_none()
+    if membership:
+        membership.role = role
+    else:
+        membership = UserTenantMembership(user_id=user_id, tenant_id=tenant_id, role=role)
+        db.add(membership)
     await db.commit()
     result = await db.execute(select(User).where(User.id == user_id))
     return result.scalar_one()
@@ -137,8 +145,8 @@ async def get_tenants_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[Ten
     """Return all active tenants this user belongs to."""
     result = await db.execute(
         select(Tenant)
-        .join(User, User.tenant_id == Tenant.id)
-        .where(User.id == user_id, Tenant.is_active == True)
+        .join(UserTenantMembership, UserTenantMembership.tenant_id == Tenant.id)
+        .where(UserTenantMembership.user_id == user_id, Tenant.is_active == True)
     )
     return result.scalars().all()
 
@@ -147,10 +155,16 @@ async def find_identity_by_phone(db: AsyncSession, phone: str) -> Optional[Dict[
     """Look up a user or staff contact across all tenants by phone number."""
     user_result = await db.execute(select(User).where(User.phone == phone, User.is_active == True))
     user = user_result.scalar_one_or_none()
-    if user and user.tenant_id:
-        tenant = await db.get(Tenant, user.tenant_id)
-        if tenant and tenant.is_active:
-            role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if user:
+        mem_result = await db.execute(
+            select(UserTenantMembership, Tenant)
+            .join(Tenant, UserTenantMembership.tenant_id == Tenant.id)
+            .where(UserTenantMembership.user_id == user.id, Tenant.is_active == True)
+        )
+        mem_row = mem_result.first()
+        if mem_row:
+            membership, tenant = mem_row
+            role_str = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
             return {
                 "tenant_id": str(tenant.id),
                 "schema": tenant.schema_name,
@@ -195,10 +209,16 @@ async def find_identity_by_telegram_id(db: AsyncSession, telegram_id: str) -> Op
     """Look up a user or staff contact across all tenants by Telegram user ID."""
     user_result = await db.execute(select(User).where(User.telegram_id == telegram_id, User.is_active == True))
     user = user_result.scalar_one_or_none()
-    if user and user.tenant_id:
-        tenant = await db.get(Tenant, user.tenant_id)
-        if tenant and tenant.is_active:
-            role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if user:
+        mem_result = await db.execute(
+            select(UserTenantMembership, Tenant)
+            .join(Tenant, UserTenantMembership.tenant_id == Tenant.id)
+            .where(UserTenantMembership.user_id == user.id, Tenant.is_active == True)
+        )
+        mem_row = mem_result.first()
+        if mem_row:
+            membership, tenant = mem_row
+            role_str = membership.role.value if hasattr(membership.role, "value") else str(membership.role)
             return {
                 "tenant_id": str(tenant.id),
                 "schema": tenant.schema_name,

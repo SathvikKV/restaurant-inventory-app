@@ -587,12 +587,12 @@ async def get_tenant_users_map(tenant_id_str: Optional[str], db: AsyncSession) -
             .where(UserTenantMembership.tenant_id == t_uuid)
         )
         for u, role in res.all():
-            u.role = role
-            users_map["by_id"][str(u.id)] = u
+            entry = {"user": u, "role": role or "manager"}
+            users_map["by_id"][str(u.id)] = entry
             if u.name:
-                users_map["by_name"][u.name.lower().strip()] = u
+                users_map["by_name"][u.name.lower().strip()] = entry
             if u.phone:
-                users_map["by_name"][u.phone] = u
+                users_map["by_name"][u.phone] = entry
     except Exception as e:
         logger.debug(f"Failed to get tenant users map: {e}", exc_info=True)
     return users_map
@@ -605,13 +605,15 @@ def resolve_actor_info(recorded_by: Optional[str], users_map: dict) -> tuple[str
     if any(w in rec_lower for w in ("system", "bot", "auto", "mise", "kosh")):
         return rec, "system"
     if rec in users_map["by_id"]:
-        u = users_map["by_id"][rec]
-        role_val = u.role.value if hasattr(u.role, 'value') else str(u.role)
-        return (u.name or u.phone or ("Owner" if role_val == "owner" else "Manager")), role_val.lower()
+        entry = users_map["by_id"][rec]
+        u, role_val = entry["user"], entry["role"]
+        role_str = role_val.value if hasattr(role_val, 'value') else str(role_val)
+        return (u.name or u.phone or ("Owner" if role_str == "owner" else "Manager")), role_str.lower()
     if rec_lower in users_map["by_name"]:
-        u = users_map["by_name"][rec_lower]
-        role_val = u.role.value if hasattr(u.role, 'value') else str(u.role)
-        return (u.name or u.phone), role_val.lower()
+        entry = users_map["by_name"][rec_lower]
+        u, role_val = entry["user"], entry["role"]
+        role_str = role_val.value if hasattr(role_val, 'value') else str(role_val)
+        return (u.name or u.phone), role_str.lower()
     if len(rec) == 36 and "-" in rec:
         return "Team Member", "manager"
     return rec, "manager"
