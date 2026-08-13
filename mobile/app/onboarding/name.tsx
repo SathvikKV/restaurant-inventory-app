@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, P
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { ChevronLeft, User } from "lucide-react-native";
-import { updateMe } from "../../lib/api";
+import { updateMe, listRestaurants } from "../../lib/api";
 import { saveAuth, loadAuth } from "../../lib/auth-store";
 import { colors } from "../../components/ui";
 import { resetStackAndNavigate } from "../../lib/nav";
@@ -29,7 +29,16 @@ export default function OnboardingNameScreen() {
       });
 
       if (auth.needsRestaurantSelection) {
-        router.push("/onboarding/create-restaurant");
+        try {
+          const restaurants = await listRestaurants(auth.token);
+          if (restaurants && restaurants.length > 0) {
+            router.push("/(app)/switch-restaurant");
+          } else {
+            router.push("/onboarding/create-restaurant");
+          }
+        } catch {
+          router.push("/onboarding/create-restaurant");
+        }
       } else {
         resetStackAndNavigate("/(app)/(tabs)/home");
       }
@@ -67,7 +76,7 @@ export default function OnboardingNameScreen() {
                   <TextInput
                     value={name}
                     onChangeText={setName}
-                    placeholder="e.g. Sathvik Vadavatha"
+                    placeholder="e.g. John Doe"
                     placeholderTextColor={colors.textMuted}
                     autoFocus
                     autoCapitalize="words"

@@ -50,7 +50,16 @@ export default function OtpScreen() {
         if (result.is_new_account) {
           router.push("/onboarding/name");
         } else {
-          router.push("/onboarding/create-restaurant");
+          try {
+            const restaurants = await listRestaurants(result.access_token);
+            if (restaurants && restaurants.length > 0) {
+              router.push("/(app)/switch-restaurant");
+            } else {
+              router.push("/onboarding/create-restaurant");
+            }
+          } catch {
+            router.push("/onboarding/create-restaurant");
+          }
         }
       } else {
         const baseToken = result.access_token;

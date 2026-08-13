@@ -3,7 +3,7 @@ import { View, Text } from "react-native";
 import { router } from "expo-router";
 
 import { hydrateAuth, clearAuth } from "../lib/auth-store";
-import { getMe } from "../lib/api";
+import { getMe, listRestaurants } from "../lib/api";
 
 export default function SplashScreen() {
   useEffect(() => {
@@ -16,7 +16,16 @@ export default function SplashScreen() {
           await getMe(auth.token); // throws if expired/invalid
           await minDelay;
           if (!auth.schema || auth.needsRestaurantSelection) {
-            router.replace("/onboarding/create-restaurant");
+            try {
+              const restaurants = await listRestaurants(auth.token);
+              if (restaurants && restaurants.length > 0) {
+                router.replace("/(app)/switch-restaurant");
+              } else {
+                router.replace("/onboarding/create-restaurant");
+              }
+            } catch {
+              router.replace("/onboarding/create-restaurant");
+            }
           } else {
             router.replace("/(app)/(tabs)/home");
           }
