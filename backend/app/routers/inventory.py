@@ -87,7 +87,16 @@ async def bulk_create_inventory(body: BulkIngredientCreate, user: dict = Depends
     from app.models.public import User, Tenant
     import uuid
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
-    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    tenant_id_str = user.get("tenant_id")
+    tenant_record = None
+    if user_record and tenant_id_str:
+        from app.models.public import UserTenantMembership
+        from sqlalchemy import select
+        mem_res = await db.execute(
+            select(Tenant).join(UserTenantMembership, UserTenantMembership.tenant_id == Tenant.id)
+            .where(UserTenantMembership.user_id == user_record.id, UserTenantMembership.tenant_id == uuid.UUID(tenant_id_str))
+        )
+        tenant_record = mem_res.scalar_one_or_none()
     spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
     
     recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
@@ -121,6 +130,25 @@ async def bulk_create_inventory(body: BulkIngredientCreate, user: dict = Depends
         
     await db.commit()
     return {"status": "ok", "items_created": len(created)}
+
+@router.get("/autocomplete", summary="Lightweight item search for UI autocomplete")
+async def autocomplete_inventory(
+    q: str,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    schema = user.get("schema")
+    if not schema:
+        return []
+    models = get_tenant_models(schema)
+    InventoryItem = models["inventory"]
+
+    if len(q.strip()) < 2:
+        return []
+
+    stmt = select(InventoryItem.id, InventoryItem.item, InventoryItem.unit).where(InventoryItem.item.ilike(f"%{q.strip()}%")).limit(5)
+    result = await db.execute(stmt)
+    return [{"id": str(row.id), "name": row.item, "unit": row.unit} for row in result.all()]
 
 @router.get("/", response_model=List[InventoryItemResponse], summary="List all inventory items")
 async def list_inventory(
@@ -194,11 +222,12 @@ async def get_inventory_item(
     stock_value = None
     if getattr(item, 'avg_price_per_base_unit', None) is not None:
         from app.services.units import to_display_pair
+        from app.services.pricing import to_rupees
         disp_qty, _ = to_display_pair(1.0, item.unit)
         if disp_qty > 0:
-            avg_price_per_unit = (item.avg_price_per_base_unit / disp_qty) / 100.0
+            avg_price_per_unit = to_rupees(item.avg_price_per_base_unit / disp_qty)
             
-        stock_value = (item.current_qty * item.avg_price_per_base_unit) / 100.0
+        stock_value = to_rupees(item.current_qty * item.avg_price_per_base_unit)
 
     return _map_item_response(
         item,
@@ -336,7 +365,16 @@ async def receive_stock(
 
     from app.models.public import User, Tenant
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
-    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    tenant_id_str = user.get("tenant_id")
+    tenant_record = None
+    if user_record and tenant_id_str:
+        from app.models.public import UserTenantMembership
+        from sqlalchemy import select
+        mem_res = await db.execute(
+            select(Tenant).join(UserTenantMembership, UserTenantMembership.tenant_id == Tenant.id)
+            .where(UserTenantMembership.user_id == user_record.id, UserTenantMembership.tenant_id == uuid.UUID(tenant_id_str))
+        )
+        tenant_record = mem_res.scalar_one_or_none()
     spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
     
     recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
@@ -390,7 +428,16 @@ async def issue_stock(
 
     from app.models.public import User, Tenant
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
-    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    tenant_id_str = user.get("tenant_id")
+    tenant_record = None
+    if user_record and tenant_id_str:
+        from app.models.public import UserTenantMembership
+        from sqlalchemy import select
+        mem_res = await db.execute(
+            select(Tenant).join(UserTenantMembership, UserTenantMembership.tenant_id == Tenant.id)
+            .where(UserTenantMembership.user_id == user_record.id, UserTenantMembership.tenant_id == uuid.UUID(tenant_id_str))
+        )
+        tenant_record = mem_res.scalar_one_or_none()
     spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
     
     recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
@@ -447,7 +494,16 @@ async def adjust_stock(
 
     from app.models.public import User, Tenant
     user_record = await db.get(User, uuid.UUID(user["user_id"]))
-    tenant_record = await db.get(Tenant, user_record.tenant_id) if user_record and user_record.tenant_id else None
+    tenant_id_str = user.get("tenant_id")
+    tenant_record = None
+    if user_record and tenant_id_str:
+        from app.models.public import UserTenantMembership
+        from sqlalchemy import select
+        mem_res = await db.execute(
+            select(Tenant).join(UserTenantMembership, UserTenantMembership.tenant_id == Tenant.id)
+            .where(UserTenantMembership.user_id == user_record.id, UserTenantMembership.tenant_id == uuid.UUID(tenant_id_str))
+        )
+        tenant_record = mem_res.scalar_one_or_none()
     spreadsheet_id = tenant_record.spreadsheet_id if tenant_record else None
     
     recorded_by_name = getattr(user_record, "name", None) if user_record else user["user_id"]
@@ -501,15 +557,15 @@ async def resolve_history_image_url(source_reference: Optional[str], models, db)
             purchase = await db.get(Purchase, uuid.UUID(source_reference))
             if purchase and getattr(purchase, "s3_key", None):
                 return get_s3_presigned_url(purchase.s3_key)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to lookup purchase for photo: {e}", exc_info=True)
         try:
             Issue = models["issues"]
             issue = await db.get(Issue, uuid.UUID(source_reference))
             if issue and getattr(issue, "s3_key", None):
                 return get_s3_presigned_url(issue.s3_key)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to lookup issue for photo: {e}", exc_info=True)
         return None
     if " " in source_reference and not source_reference.startswith("http"):
         return None
@@ -524,15 +580,21 @@ async def get_tenant_users_map(tenant_id_str: Optional[str], db: AsyncSession) -
         return users_map
     try:
         t_uuid = uuid.UUID(tenant_id_str)
-        res = await db.execute(select(User).where(User.tenant_id == t_uuid))
-        for u in res.scalars().all():
+        from app.models.public import UserTenantMembership
+        res = await db.execute(
+            select(User, UserTenantMembership.role)
+            .join(UserTenantMembership, User.id == UserTenantMembership.user_id)
+            .where(UserTenantMembership.tenant_id == t_uuid)
+        )
+        for u, role in res.all():
+            u.role = role
             users_map["by_id"][str(u.id)] = u
             if u.name:
                 users_map["by_name"][u.name.lower().strip()] = u
             if u.phone:
                 users_map["by_name"][u.phone] = u
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Failed to get tenant users map: {e}", exc_info=True)
     return users_map
 
 def resolve_actor_info(recorded_by: Optional[str], users_map: dict) -> tuple[str, str]:

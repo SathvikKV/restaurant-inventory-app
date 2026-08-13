@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, HTTPException, status, Depends, Cookie
+from fastapi import APIRouter, HTTPException, status, Depends, Cookie, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
@@ -7,7 +7,7 @@ from app.middleware.auth_middleware import get_current_user
 from app.schemas.auth import (
     SendOTPRequest, SendOTPResponse,
     VerifyOTPRequest, TokenResponse,
-    SelectRestaurantRequest, UserMeResponse, UpdateProfileRequest,
+    UserMeResponse, UpdateProfileRequest,
 )
 from app.services.auth_service import (
     generate_otp, store_otp, verify_otp as verify_otp_code,
@@ -15,7 +15,7 @@ from app.services.auth_service import (
     create_access_token, create_refresh_token_str,
     store_refresh_token, rotate_refresh_token, invalidate_refresh_token,
 )
-from app.models.public import Tenant
+from app.models.public import Tenant, UserTenantMembership
 from sqlalchemy import select
 
 router = APIRouter()
@@ -59,19 +59,29 @@ async def verify_otp(body: VerifyOTPRequest, db: AsyncSession = Depends(get_db))
 
     user, is_new = await get_or_create_user(db, body.phone)
 
-    # Get user's tenant if assigned
+    # Get user's tenants
+    result = await db.execute(
+        select(UserTenantMembership, Tenant)
+        .join(Tenant, UserTenantMembership.tenant_id == Tenant.id)
+        .where(UserTenantMembership.user_id == user.id, Tenant.is_active == True)
+    )
+    memberships = result.all()
+    
     tenant_id = ""
     schema_name = ""
-    if user.tenant_id:
-        result = await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))
-        tenant = result.scalar_one_or_none()
-        if tenant:
-            tenant_id = str(tenant.id)
-            schema_name = tenant.schema_name
+    role = ""
+    needs_restaurant_selection = True
+    
+    if len(memberships) == 1:
+        membership, tenant = memberships[0]
+        tenant_id = str(tenant.id)
+        schema_name = tenant.schema_name
+        role = membership.role.value if hasattr(membership.role, 'value') else membership.role
+        needs_restaurant_selection = False
 
     access_token = create_access_token(
         user_id=str(user.id),
-        role=user.role.value if hasattr(user.role, 'value') else user.role,
+        role=role,
         tenant_id=tenant_id,
         schema_name=schema_name,
     )
@@ -81,12 +91,12 @@ async def verify_otp(body: VerifyOTPRequest, db: AsyncSession = Depends(get_db))
     response = JSONResponse(content={
         "access_token": access_token,
         "token_type": "bearer",
-        "role": user.role.value if hasattr(user.role, 'value') else user.role,
+        "role": role,
         "tenant_id": tenant_id,
         "schema": schema_name,
         "user_id": str(user.id),
         "user_name": user.name or "",
-        "needs_restaurant_selection": tenant_id == "",
+        "needs_restaurant_selection": needs_restaurant_selection,
         "is_new_account": is_new,
     })
     # Set refresh token as httpOnly cookie
@@ -103,6 +113,7 @@ async def verify_otp(body: VerifyOTPRequest, db: AsyncSession = Depends(get_db))
 
 @router.post("/refresh", summary="Refresh access token")
 async def refresh_token(
+    request: Request,
     refresh_token: str = Cookie(None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -117,23 +128,44 @@ async def refresh_token(
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
+    # Get user's tenants
+    result = await db.execute(
+        select(UserTenantMembership, Tenant)
+        .join(Tenant, UserTenantMembership.tenant_id == Tenant.id)
+        .where(UserTenantMembership.user_id == user.id, Tenant.is_active == True)
+    )
+    memberships = result.all()
+    
     tenant_id = ""
     schema_name = ""
-    if user.tenant_id:
-        result = await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))
-        tenant = result.scalar_one_or_none()
-        if tenant:
-            tenant_id = str(tenant.id)
-            schema_name = tenant.schema_name
+    role = ""
+    needs_restaurant_selection = True
+    
+
+    if needs_restaurant_selection and len(memberships) == 1:
+        membership, tenant = memberships[0]
+        tenant_id = str(tenant.id)
+        schema_name = tenant.schema_name
+        role = membership.role.value if hasattr(membership.role, 'value') else membership.role
+        needs_restaurant_selection = False
 
     access_token = create_access_token(
         user_id=str(user.id),
-        role=user.role.value if hasattr(user.role, 'value') else user.role,
+        role=role,
         tenant_id=tenant_id,
         schema_name=schema_name,
     )
 
-    response = JSONResponse(content={"access_token": access_token, "token_type": "bearer"})
+    response = JSONResponse(content={
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "role": role,
+        "tenant_id": tenant_id,
+        "schema": schema_name,
+        "user_id": str(user.id),
+        "user_name": user.name or "",
+        "needs_restaurant_selection": needs_restaurant_selection,
+    })
     response.set_cookie(
         key="refresh_token",
         value=new_token_str,
@@ -145,27 +177,7 @@ async def refresh_token(
     return response
 
 
-@router.post("/select-restaurant", summary="Switch active restaurant context")
-async def select_restaurant(
-    body: SelectRestaurantRequest,
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Re-issues JWT with the selected restaurant's schema in the claims."""
-    result = await db.execute(
-        select(Tenant).where(Tenant.id == uuid.UUID(body.restaurant_id))
-    )
-    tenant = result.scalar_one_or_none()
-    if not tenant:
-        raise HTTPException(status_code=404, detail="Restaurant not found")
 
-    access_token = create_access_token(
-        user_id=user["user_id"],
-        role=user["role"],
-        tenant_id=str(tenant.id),
-        schema_name=tenant.schema_name,
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.get("/me", response_model=UserMeResponse, summary="Get current authenticated user")
@@ -180,8 +192,8 @@ async def get_me(
         id=str(db_user.id),
         name=db_user.name or "",
         phone=db_user.phone,
-        role=db_user.role.value if hasattr(db_user.role, 'value') else db_user.role,
-        tenant_id=str(db_user.tenant_id) if db_user.tenant_id else "",
+        role="",
+        tenant_id="",  # Multi-membership users need to select a restaurant at login
         is_active=db_user.is_active,
     )
 
@@ -203,8 +215,8 @@ async def update_me(
         id=str(db_user.id),
         name=db_user.name or "",
         phone=db_user.phone,
-        role=db_user.role.value if hasattr(db_user.role, 'value') else db_user.role,
-        tenant_id=str(db_user.tenant_id) if db_user.tenant_id else "",
+        role="",
+        tenant_id="",  # Multi-membership users need to select a restaurant at login
         is_active=db_user.is_active,
     )
 
