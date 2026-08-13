@@ -36,8 +36,6 @@ class Tenant(Base):
     spreadsheet_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     sheet_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
-    users: Mapped[list["User"]] = relationship("User", back_populates="tenant")
-
 class User(Base):
     __tablename__ = "users"
     __table_args__ = {"schema": "public"}
@@ -46,14 +44,25 @@ class User(Base):
     phone: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     telegram_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=True)
-    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.manager)
-    tenant_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("public.tenants.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="users")
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship("RefreshToken", back_populates="user")
     push_tokens: Mapped[list["PushToken"]] = relationship("PushToken", back_populates="user")
+    memberships: Mapped[list["UserTenantMembership"]] = relationship("UserTenantMembership", back_populates="user")
+
+class UserTenantMembership(Base):
+    __tablename__ = "user_tenant_memberships"
+    __table_args__ = {"schema": "public"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("public.users.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("public.tenants.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.manager, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped["User"] = relationship("User", back_populates="memberships")
+    tenant: Mapped["Tenant"] = relationship("Tenant")
 
 class OTPCode(Base):
     __tablename__ = "otp_codes"
